@@ -4,7 +4,7 @@ import com.rabbitmq.stream.Address;
 import com.rabbitmq.stream.Environment;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.Network;
-import org.testcontainers.containers.ToxiproxyContainer;
+import org.testcontainers.toxiproxy.ToxiproxyContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.images.builder.Transferable;
 import org.testcontainers.utility.DockerImageName;
@@ -46,10 +46,74 @@ public final class RabbitTestBroker {
         if (toxiproxy == null) {
             rabbit();
             toxiproxy = new ToxiproxyContainer(DockerImageName.parse("ghcr.io/shopify/toxiproxy:2.12.0"))
-                    .withNetwork(NETWORK);
+                    .withNetwork(NETWORK).withExposedPorts(8474, 8666, 8667, 8668, 8669, 8670, 8671);
             toxiproxy.start();
         }
         return toxiproxy;
+    }
+
+    private static final java.util.Map<String, eu.rekawek.toxiproxy.Proxy> PROXIES = new java.util.HashMap<>();
+    private static int nextProxyPort = 8666;
+
+    /**
+     * Stream 포트(5552) 앞의 Toxiproxy 프록시(이름마다 하나). 지연·차단으로 confirm이 늦거나 오지 않는 상황을 만든다.
+     *
+     * @return 프록시와 앱이 접속할 host:port
+     */
+    public static synchronized StreamProxy streamProxy(String name) {
+        try {
+            ToxiproxyContainer tp = toxiproxy();
+            eu.rekawek.toxiproxy.Proxy proxy = PROXIES.get(name);
+            int listen;
+            if (proxy == null) {
+                listen = nextProxyPort++;
+                proxy = new eu.rekawek.toxiproxy.ToxiproxyClient(tp.getHost(), tp.getControlPort())
+                        .createProxy(name, "0.0.0.0:" + listen, "rabbit:" + STREAM);
+                PROXIES.put(name, proxy);
+            } else {
+                listen = Integer.parseInt(proxy.getListen().replaceAll(".*:", ""));
+            }
+            return new StreamProxy(proxy, tp.getHost(), tp.getMappedPort(listen));
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /** Stream Toxiproxy 프록시와 접속 주소 */
+    public record StreamProxy(eu.rekawek.toxiproxy.Proxy proxy, String host, int port) {
+
+        /** 응답(confirm) 방향에 지연을 준다 */
+        public void latency(long millis) {
+            try {
+                removeToxics();
+                proxy.toxics().latency("confirm-latency", eu.rekawek.toxiproxy.model.ToxicDirection.DOWNSTREAM, millis);
+            } catch (java.io.IOException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+
+        public void removeToxics() {
+            try {
+                for (eu.rekawek.toxiproxy.model.Toxic t : proxy.toxics().getAll()) {
+                    t.remove();
+                }
+            } catch (java.io.IOException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+
+        /** 연결을 끊고 새 연결을 막는다(RabbitMQ 장애 흉내) / 다시 연다 */
+        public void enabled(boolean value) {
+            try {
+                if (value) {
+                    proxy.enable();
+                } else {
+                    proxy.disable();
+                }
+            } catch (java.io.IOException e) {
+                throw new IllegalStateException(e);
+            }
+        }
     }
 
     public static String host() {

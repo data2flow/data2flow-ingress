@@ -97,6 +97,19 @@ public class IngressConfig {
                 : Health.down().withDetail("error", String.valueOf(writer.lastError())).build();
     }
 
+    /** 운영 확인용: 소스별 연결 상태(관리 포트 8081 /actuator/health). readiness에는 넣지 않는다(외부 브로커 장애로 파드를 빼지 않음) */
+    @Bean
+    HealthIndicator sourcesHealthIndicator(SourceSupervisor supervisor) {
+        return () -> {
+            Health.Builder b = Health.up();
+            supervisor.running().forEach(r -> b.withDetail(Long.toString(r.definition().id()),
+                    java.util.Map.of("state", r.session().status().state().name(),
+                            "clientId", String.valueOf(r.config().clientId()),
+                            "received", r.session().status().received())));
+            return b.build();
+        };
+    }
+
     @Bean
     SourceEventPublisher sourceEventPublisher(RabbitTemplate rabbitTemplate, MessageCodec codec, MeterRegistry meters) {
         return new SourceEventPublisher(rabbitTemplate, codec, meters);

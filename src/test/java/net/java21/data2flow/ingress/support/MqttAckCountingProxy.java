@@ -26,6 +26,7 @@ public final class MqttAckCountingProxy implements AutoCloseable {
     private final AtomicLong acks = new AtomicLong();
     private final AtomicLong connections = new AtomicLong();
     private final List<Socket> open = new CopyOnWriteArrayList<>();
+    private final List<Long> acceptedAtNanos = new CopyOnWriteArrayList<>();
     private volatile boolean blocked;
     private volatile boolean closed;
 
@@ -52,6 +53,11 @@ public final class MqttAckCountingProxy implements AutoCloseable {
         return connections.get();
     }
 
+    /** 접속 시도 시각(System.nanoTime, 막힌 동안의 시도 포함). 재연결 간격 확인(TC-DSC-069) */
+    public List<Long> acceptedAtNanos() {
+        return List.copyOf(acceptedAtNanos);
+    }
+
     /** 모든 연결을 즉시 끊는다(DISCONNECT 없음) */
     public void cut() {
         for (Socket s : open) {
@@ -72,6 +78,7 @@ public final class MqttAckCountingProxy implements AutoCloseable {
         while (!closed) {
             try {
                 Socket client = server.accept();
+                acceptedAtNanos.add(System.nanoTime());
                 if (blocked) {
                     closeQuietly(client);
                     continue;
