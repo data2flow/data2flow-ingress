@@ -34,6 +34,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.UnaryOperator;
 
 /**
  * 소스별 커넥터 세션을 실행·관리한다(connectors.md §1 ConnectorRuntime, BR-DSC-05, DSC-07.01).
@@ -86,6 +87,7 @@ public class SourceSupervisor implements SmartLifecycle {
     private final ReceivedListener receivedListener;
     private final MeterRegistry meters;
     private final Clock clock;
+    private final UnaryOperator<RawEnvelope> envelopeFilter;
     private final Map<Long, Running> running = new java.util.concurrent.ConcurrentHashMap<>();
     private final Set<Long> warnedSkipped = new HashSet<>();
     private volatile boolean started;
@@ -93,6 +95,17 @@ public class SourceSupervisor implements SmartLifecycle {
     public SourceSupervisor(IngressProperties properties, ConnectorRegistry registry, RawSink writer,
                             StatusListener statusListener, ReceivedListener receivedListener, MeterRegistry meters,
                             Clock clock) {
+        this(properties, registry, writer, statusListener, receivedListener, meters, clock, UnaryOperator.identity());
+    }
+
+    /**
+     * @param envelopeFilter 스트림에 기록하기 전에 봉투를 바꾼다(플랫폼 브로커 서명 검증, DSC-03.03). 같은 스레드에서 바로 실행되어
+     *                       confirm 뒤 PUBACK 순서는 그대로다
+     */
+    public SourceSupervisor(IngressProperties properties, ConnectorRegistry registry, RawSink writer,
+                            StatusListener statusListener, ReceivedListener receivedListener, MeterRegistry meters,
+                            Clock clock, UnaryOperator<RawEnvelope> envelopeFilter) {
+        this.envelopeFilter = envelopeFilter;
         this.properties = properties;
         this.registry = registry;
         this.writer = writer;
@@ -190,7 +203,8 @@ public class SourceSupervisor implements SmartLifecycle {
         Counter receivedMeter = Counter.builder("data2flow.ingress.messages.received")
                 .tag("sourceId", Long.toString(d.id())).description("스트림 기록까지 끝난 수신 메시지 수(DSC-02.03)")
                 .register(meters);
-        RawSink sink = envelope -> {
+        RawSink sink = received -> {
+            RawEnvelope envelope = envelopeFilter.apply(received);
             CompletionStage<Void> write = writer.write(envelope);
             return write.thenRun(() -> {
                 counters.received.incrementAndGet();

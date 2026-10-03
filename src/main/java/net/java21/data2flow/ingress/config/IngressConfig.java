@@ -15,6 +15,9 @@ import net.java21.data2flow.ingress.connector.mqtt.MqttConnectorOptions;
 import net.java21.data2flow.ingress.connector.mqtt.MqttSourceConnector;
 import net.java21.data2flow.ingress.connector.service.ConnectorRegistry;
 import net.java21.data2flow.ingress.live.service.LiveTap;
+import net.java21.data2flow.ingress.signing.service.PayloadSignatureVerifier;
+import net.java21.data2flow.ingress.signing.service.SigningKeyCache;
+import net.java21.data2flow.ingress.signing.service.SigningKeyClient;
 import net.java21.data2flow.ingress.source.event.ConfigChangedListener;
 import net.java21.data2flow.ingress.source.event.SourceEventPublisher;
 import net.java21.data2flow.ingress.source.event.SourceStatusReporter;
@@ -127,14 +130,32 @@ public class IngressConfig {
         return new LiveTap(properties.live());
     }
 
+    /** 플랫폼 브로커 기기 서명 키(API-DSC-72, ADR-042) */
+    @Bean
+    SigningKeyClient signingKeyClient(RestClient.Builder builder, ObjectProvider<JsonMapper> json, IngressProperties properties) {
+        return new SigningKeyClient(builder, json.getIfAvailable(MessageCodec::newMapper), properties);
+    }
+
+    @Bean(destroyMethod = "close")
+    SigningKeyCache signingKeyCache(SigningKeyClient client, IngressProperties properties, Clock clock) {
+        return new SigningKeyCache(client, properties.signing().refreshInterval(), clock);
+    }
+
+    @Bean
+    PayloadSignatureVerifier payloadSignatureVerifier(SigningKeyCache keys, MeterRegistry meters) {
+        return new PayloadSignatureVerifier(keys, meters);
+    }
+
     @Bean
     SourceSupervisor sourceSupervisor(IngressProperties properties, ConnectorRegistry registry, RawStreamWriter writer,
-                                      SourceStatusReporter reporter, LiveTap liveTap, MeterRegistry meters, Clock clock) {
+                                      SourceStatusReporter reporter, LiveTap liveTap, MeterRegistry meters, Clock clock,
+                                      PayloadSignatureVerifier verifier) {
         SourceSupervisor.ReceivedListener received = (RawEnvelope e) -> {
             liveTap.onReceived(e);
             reporter.onReceived(e);
         };
-        SourceSupervisor supervisor = new SourceSupervisor(properties, registry, writer, reporter, received, meters, clock);
+        SourceSupervisor supervisor = new SourceSupervisor(properties, registry, writer, reporter, received, meters, clock,
+                verifier);
         reporter.attach(supervisor);
         return supervisor;
     }
@@ -179,8 +200,8 @@ public class IngressConfig {
     }
 
     @Bean
-    ConfigChangedListener configChangedListener(MessageCodec codec, RuntimeConfigSync sync) {
-        return new ConfigChangedListener(codec, sync);
+    ConfigChangedListener configChangedListener(MessageCodec codec, RuntimeConfigSync sync, SigningKeyCache keys) {
+        return new ConfigChangedListener(codec, sync, keys::requestRefresh);
     }
 
     @Bean
@@ -198,8 +219,8 @@ public class IngressConfig {
     /** 시작: 상태 보고와 core 설정 동기화(스트림이 준비되면 첫 설정을 읽는다) */
     @Bean
     ApplicationStartup ingressStartup(IngressProperties properties, SourceStatusReporter reporter,
-                                      RuntimeConfigSync sync, ConfigChangedListener listener) {
-        return new ApplicationStartup(properties, reporter, sync, listener);
+                                      RuntimeConfigSync sync, ConfigChangedListener listener, SigningKeyCache keys) {
+        return new ApplicationStartup(properties, reporter, sync, listener, keys);
     }
 
     /** 시작 이벤트 처리 */
@@ -208,9 +229,11 @@ public class IngressConfig {
         private final SourceStatusReporter reporter;
         private final RuntimeConfigSync sync;
         private final ConfigChangedListener listener;
+        private final SigningKeyCache keys;
 
         ApplicationStartup(IngressProperties properties, SourceStatusReporter reporter, RuntimeConfigSync sync,
-                           ConfigChangedListener listener) {
+                           ConfigChangedListener listener, SigningKeyCache keys) {
+            this.keys = keys;
             this.properties = properties;
             this.reporter = reporter;
             this.sync = sync;
@@ -220,6 +243,7 @@ public class IngressConfig {
         @EventListener
         public void onReady(ApplicationReadyEvent event) {
             if (properties.autoStart()) {
+                keys.start();
                 reporter.start();
                 sync.start();
             }

@@ -20,6 +20,8 @@ public final class CoreStub implements AutoCloseable {
     private final AtomicReference<String> version = new AtomicReference<>("0");
     private final AtomicInteger requests = new AtomicInteger();
     private final AtomicReference<String> lastCaller = new AtomicReference<>();
+    private final AtomicReference<String> signingKeys = new AtomicReference<>("[]");
+    private final AtomicInteger signingKeyRequests = new AtomicInteger();
 
     public CoreStub() {
         try {
@@ -43,7 +45,26 @@ public final class CoreStub implements AutoCloseable {
                 out.write(bytes);
             }
         });
+        server.createContext("/internal/core/device-credentials/signing-keys", exchange -> {
+            signingKeyRequests.incrementAndGet();
+            byte[] bytes = ("{\"header\":{\"isSuccessful\":true,\"resultCode\":\"SUCCESS\"},\"response\":{\"version\":\"1\",\"keys\":"
+                    + signingKeys.get() + "}}").getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, bytes.length);
+            try (OutputStream out = exchange.getResponseBody()) {
+                out.write(bytes);
+            }
+        });
         server.start();
+    }
+
+    /** API-DSC-72 응답의 keys 배열 JSON을 바꾼다 */
+    public void signingKeys(String keysJson) {
+        signingKeys.set(keysJson);
+    }
+
+    public int signingKeyRequests() {
+        return signingKeyRequests.get();
     }
 
     public String uri() {

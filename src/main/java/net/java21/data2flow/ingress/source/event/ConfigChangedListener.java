@@ -17,10 +17,17 @@ public class ConfigChangedListener {
 
     private final MessageCodec codec;
     private final RuntimeConfigSync sync;
+    private final Runnable credentialChanged;
 
     public ConfigChangedListener(MessageCodec codec, RuntimeConfigSync sync) {
+        this(codec, sync, () -> { });
+    }
+
+    /** @param credentialChanged 자격(CREDENTIAL)이 바뀌면 부른다: 서명 키 캐시를 바로 다시 읽는다(DSC-03.02, 1분 안 반영) */
+    public ConfigChangedListener(MessageCodec codec, RuntimeConfigSync sync, Runnable credentialChanged) {
         this.codec = codec;
         this.sync = sync;
+        this.credentialChanged = credentialChanged;
     }
 
     public void onMessage(Message message) {
@@ -35,6 +42,9 @@ public class ConfigChangedListener {
             case SOURCE, CREDENTIAL -> {
                 log.debug("설정 변경 {} {} v{} → 다시 읽기", change.entityType(), change.id(), change.version());
                 sync.requestRefresh();
+                if (change.entityType() == ConfigChangedMessage.EntityType.CREDENTIAL) {
+                    credentialChanged.run();
+                }
             }
             default -> {
             }
@@ -44,5 +54,6 @@ public class ConfigChangedListener {
     /** 소비자가 (다시) 시작됨: 끊긴 동안 놓친 변경을 보완하려고 전체를 다시 읽는다 */
     public void onConsumerStarted() {
         sync.requestRefresh();
+        credentialChanged.run();
     }
 }

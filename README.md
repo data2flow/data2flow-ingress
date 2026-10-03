@@ -24,6 +24,7 @@
 | 종료 | SIGTERM → 새 메시지는 넘기지 않고, 기록 중인 것의 confirm·PUBACK을 기다린 뒤(최대 20초) 세션을 남긴 채 끊는다 | reliability-and-ha.md §4.1 |
 | 연결 테스트 | `POST /internal/ingress/sources/test`(API-DSC-51): DNS→TCP→TLS→AUTH→SUBSCRIBE, 미리보기 10건, 최대 30초, 조직당 동시 3개 | DSC-02.05·09.11 |
 | 실시간 보기 | `GET /internal/ingress/sources/{source-id}/live`(API-DSC-52, SSE): 초당 10건, 넘치면 `dropped` | DSC-02.06 |
+| 플랫폼 브로커 서명 | PLATFORM_BROKER 소스는 토픽 `devices/{deviceKey}/…`의 기기 서명 키(core API-DSC-72, 30초마다·자격 변경 시 1초 안에 다시 읽음)로 payload 서명을 검증해 `RawEnvelope.signatureStatus`(VERIFIED·UNSIGNED·INVALID)를 싣는다. 키 없음(승인 전·폐기) UNSIGNED, 키가 있는데 서명 없음·불일치 INVALID(지표 `data2flow_ingest_signature_rejected_total{reason=missing\|mismatch}`, 원본은 기록하고 pipeline이 `DEVICE_SIGNATURE_INVALID`로 거부). 아래 "플랫폼 브로커 서명 형식" | DSC-03.02·03.03·03.05, ADR-042 |
 | 관측 | readiness = `data2flow.raw` 생산자 준비. 지표 `data2flow_ingress_*`, 소스별 상태 `/actuator/health`의 `sources` | OPS-01.02 |
 
 **구독 전용입니다.** 운영 코드에는 MQTT 발행 경로가 없고(`ArchitectureTest`가 HiveMQ 발행 API 호출을 막습니다), 송신 API(API-DSC-61)는 만들지 않았습니다(ACT-03.02 결정 대기).
@@ -70,11 +71,26 @@
 | `data2flow.ingress.resync-interval` | – | `5m` | core 설정 전체 재동기화 주기 |
 | `data2flow.ingress.report-interval`·`stats-interval` | – | `30s`·`1m` | EVT-DSC-02·03 주기 |
 | `data2flow.ingress.connection-test.max-per-organization` | – | `3` | 조직당 동시 연결 테스트 |
+| `data2flow.ingress.platform-broker.url` | `DATA2FLOW_PLATFORM_BROKER_URL` | `wss://iot-data.java21.net/mqtt` | PLATFORM_BROKER 소스의 브로커(소스 설정에는 주소가 없다, ADR-029). **구독만** 한다. 로컬 시연은 임시 Mosquitto 주소 |
+| `data2flow.ingress.platform-broker.topics` | `DATA2FLOW_PLATFORM_BROKER_TOPICS` | `devices/+/telemetry` | 구독 토픽(쉼표 목록, BR-DSC-12) |
+| `data2flow.ingress.platform-broker.version` | `DATA2FLOW_PLATFORM_BROKER_MQTT_VERSION` | `5.0` | MQTT 버전 |
+| `data2flow.ingress.platform-broker.username`·`password` | `DATA2FLOW_PLATFORM_BROKER_USERNAME`·`_PASSWORD` | (없음) | 있으면 ws·wss는 Basic 헤더, tcp·ssl은 사용자/비밀번호. 없고 주소가 `iot-data.java21.net`이면 `MQTT_BASIC_AUTH`를 Basic 헤더로 쓴다 |
+| `data2flow.ingress.signing.refresh-interval` | `DATA2FLOW_SIGNING_KEY_REFRESH` | `30s` | 서명 키 다시 읽기 주기. 60초를 넘으면 기동 실패(DSC-03.02 폐기 1분 안 반영) |
 | `management.tracing.sampling.probability` | `DATA2FLOW_TRACING_SAMPLING` | `0.1` | 추적 표본 비율(OTLP 내보내기는 주소를 정한 환경만) |
 
 ### 소스 설정(core-api가 주는 `config`)
 
 MQTT 커넥터(키 `mqtt`) 설정 스키마는 `src/main/resources/connectors/mqtt.schema.json`이고 카탈로그 보고(EVT-DSC-09)에 실립니다. DSC 도메인 모델 §2.2의 평평한 모양(`url, qos, keepaliveSec, cleanStart, sessionExpirySec, auth: NONE|USERPASS|HEADER|MTLS, headerName, headerScheme`)과 connectors.md §3 예시 모양(`version, subscriptions[], session{}, auth{type: ws-header, scheme}, tls{verify}`)을 모두 읽습니다. 비밀값 종류는 `PASSWORD`, `HEADER_VALUE`(Basic이면 `사용자:비밀번호`도 받음), `CA_CERT`, `CLIENT_CERT`, `CLIENT_KEY`(PKCS#8 PEM)입니다.
+
+### 플랫폼 브로커 서명 형식 (DSC-03.03, ADR-042)
+
+기기는 본문 앞에 서명을 붙여 `devices/{deviceKey}/telemetry`에 발행합니다. MQTT 3.1.1에는 헤더가 없어서 payload에 넣습니다.
+
+```
+payload = "v1." + hex(HMAC-SHA256(서명 키 UTF-8, body)) + "." + body      # hex는 소문자 64자
+```
+
+예: `printf '%s' "$body" | openssl dgst -sha256 -hmac "$KEY" -hex`로 서명을 만들고 `v1.<서명>.<body>`로 보냅니다. 형식 구현은 contracts `PlatformBrokerSignature`입니다. ingress는 검증에 성공하면 접두사를 뗀 `body`를 기록합니다.
 
 ## 4. 시험
 
@@ -85,6 +101,7 @@ MQTT 커넥터(키 `mqtt`) 설정 스키마는 `src/main/resources/connectors/mq
 | `IngressKillBeforeConfirmIT` | TC-ING-017: confirm 3초 지연 중 `kill -9` → 같은 client-id로 재시작, 300건 유실 0 |
 | `GracefulShutdownIT` | TC-ING-021: SIGTERM 때 기록 중 메시지 confirm·PUBACK 후 종료, 유실 0·중복 0 |
 | `MqttManualAckIT` | TC-ING-016: Stream이 끊긴 동안 PUBACK 0, 복구 후 재전송으로 모두 기록 |
+| `PlatformBrokerSignatureIT`, `PayloadSignatureVerifierTest`, `SigningKeyCacheTest` | TC-DSC-114·322: 승인 전 UNSIGNED, 자격 변경 후 서명 맞음 VERIFIED·서명 없음·다른 기기 키 INVALID, 폐기 키 제거, 60초 이하 주기 |
 | `ReconnectBackoffIT`, `ConnectorScalingIT`, `StagedConnectionTestIT`, `IngressCollectionIT` | 재연결 1·2·4·8초, 공유 구독 1만 건 분배·이중 수신, 단계별 연결 테스트, 수집 경로 전체 |
 
 ## 5. 작업 규칙
