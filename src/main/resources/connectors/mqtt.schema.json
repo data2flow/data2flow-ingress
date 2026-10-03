@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data2flow.java21.net/schemas/connectors/mqtt-1.0.0.json",
+  "title": "MQTT 3.1.1 / 5.0",
+  "description": "DSC-01.04·01.05·09.04 MQTT 구독 설정. 비밀값(PASSWORD·HEADER_VALUE·CA_CERT·CLIENT_CERT·CLIENT_KEY)은 이 JSON이 아니라 비밀값 저장소에 둔다(BR-DSC-02).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["url", "topics"],
+  "properties": {
+    "url": {"type": "string", "pattern": "^(tcp|mqtt|ssl|mqtts|ws|wss)://[^\\s/:]+(:\\d{1,5})?(/.*)?$", "description": "브로커 주소. 예: wss://iot-data.java21.net:443/mqtt"},
+    "version": {"type": "string", "enum": ["5.0", "3.1.1"], "default": "5.0"},
+    "clientIdBase": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,80}$", "description": "비우면 data2flow-{code}. 실제 client-id는 {base}-{env}-{n}(BR-DSC-01)"},
+    "topics": {
+      "type": "array", "minItems": 1, "maxItems": 20,
+      "items": {"type": "object", "additionalProperties": false, "required": ["topic"],
+        "properties": {"topic": {"type": "string", "minLength": 1, "maxLength": 256}, "qos": {"type": "integer", "enum": [0, 1, 2], "default": 1}}}
+    },
+    "qos": {"type": "integer", "enum": [0, 1, 2], "default": 1, "description": "토픽별 QoS가 없을 때. 무손실 확인은 1·2에서만(DSC-09.03)"},
+    "keepaliveSec": {"type": "integer", "minimum": 10, "maximum": 600, "default": 60},
+    "cleanStart": {"type": "boolean", "default": false, "description": "false = 영속 세션(무손실)"},
+    "sessionExpirySec": {"type": "integer", "minimum": 0, "maximum": 604800, "default": 3600},
+    "sharedGroup": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$", "description": "MQTT 5 공유 구독 그룹($share/{group}/…). 있으면 SCALABLE, 없으면 DUAL_ACTIVE(BR-DSC-25)"},
+    "retainHandling": {"type": "string", "enum": ["SEND", "SEND_IF_SUBSCRIPTION_DOES_NOT_EXIST", "DO_NOT_SEND"], "default": "SEND"},
+    "auth": {"type": "string", "enum": ["NONE", "USERPASS", "HEADER", "MTLS"], "default": "NONE"},
+    "username": {"type": "string", "maxLength": 256},
+    "headerName": {"type": "string", "default": "Authorization", "description": "HEADER 인증(ws·wss)의 HTTP 헤더 이름"},
+    "headerScheme": {"type": "string", "description": "예: Basic. Basic이고 값이 사용자:비밀번호면 Base64로 바꾼다"},
+    "tlsInsecure": {"type": "boolean", "default": false, "description": "인증서 검증 끄기. 개발 소스만(BR-DSC-29)"}
+  },
+  "x-ui": {
+    "tabs": [
+      {"name": "connection", "fields": ["url", "version", "clientIdBase", "keepaliveSec", "cleanStart", "sessionExpirySec"]},
+      {"name": "subscription", "fields": ["topics", "qos", "sharedGroup", "retainHandling"]},
+      {"name": "security", "fields": ["auth", "username", "headerName", "headerScheme", "tlsInsecure"]}
+    ]
+  }
+}

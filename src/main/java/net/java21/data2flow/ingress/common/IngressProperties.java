@@ -1,0 +1,136 @@
+package net.java21.data2flow.ingress.common;
+
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.DefaultValue;
+
+import java.time.Duration;
+import java.util.List;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/**
+ * ingress 설정({@code data2flow.ingress.*}). 키와 환경변수 이름은 README "설정"에 있다. 비밀값(비밀번호)은 환경변수로만 받는다.
+ *
+ * @param instanceId     파드 이름({@code RawEnvelope.ingressInstance}, 상태 보고 instanceId). k8s는 HOSTNAME
+ * @param instanceOrdinal client-id 끝 번호. 음수면 instanceId 끝의 {@code -숫자}(StatefulSet 순번), 없으면 0
+ * @param env            client-id 환경 이름: {@code prod}, {@code stg}, {@code dev}(BR-DSC-01)
+ * @param developer      로컬 개발자 이름. 있으면 client-id가 {@code {base}-dev-{developer}-{n}}(deployment.md §8.2)
+ * @param coreUri        core-api 내부 주소(API-DSC-50)
+ * @param resyncInterval 설정 전체를 다시 읽는 주기(설정 변경 메시지를 놓쳐도 이 안에 맞춘다)
+ * @param reportInterval 연결 상태 보고 주기(EVT-DSC-02, 30초)
+ * @param statsInterval  수신 통계 보고 주기(EVT-DSC-03, 1분)
+ * @param drainTimeout   종료 때 기록 중인 메시지 confirm을 기다리는 최대 시간(reliability-and-ha.md §4.1, 20초)
+ * @param autoStart      시작할 때 core-api에서 설정을 읽어 연결을 시작한다(테스트에서 끈다)
+ * @param sourceFilter   이 인스턴스가 실행할 소스 제한(staging은 실제 외부 소스를 구독하지 않는다, deployment.md §9)
+ * @param credentials    {@code auth.credentialRef}가 가리키는 비밀값(이름 → 값). core가 비밀값을 주지 않은 소스에만 쓴다
+ * @param mqtt           MQTT 커넥터 기본값
+ * @param stream         {@code data2flow.raw} 스트림 접속
+ * @param connectionTest 연결 테스트(API-DSC-51)
+ * @param live           원본 실시간 보기(API-DSC-52)
+ */
+@ConfigurationProperties("data2flow.ingress")
+public record IngressProperties(
+        @DefaultValue("ingress-local-0") String instanceId,
+        @DefaultValue("-1") int instanceOrdinal,
+        @DefaultValue("dev") String env,
+        String developer,
+        @DefaultValue("http://data2flow-core-api") String coreUri,
+        @DefaultValue("5m") Duration resyncInterval,
+        @DefaultValue("30s") Duration reportInterval,
+        @DefaultValue("1m") Duration statsInterval,
+        @DefaultValue("20s") Duration drainTimeout,
+        @DefaultValue("true") boolean autoStart,
+        @DefaultValue SourceFilter sourceFilter,
+        Map<String, String> credentials,
+        @DefaultValue Mqtt mqtt,
+        @DefaultValue Stream stream,
+        @DefaultValue ConnectionTest connectionTest,
+        @DefaultValue Live live) {
+
+    private static final Pattern TRAILING_ORDINAL = Pattern.compile(".*-(\\d+)$");
+
+    public IngressProperties {
+        credentials = credentials == null ? Map.of() : Map.copyOf(credentials);
+    }
+
+    /** client-id 끝 번호(BR-DSC-01 instanceOrdinal) */
+    public int ordinal() {
+        if (instanceOrdinal >= 0) {
+            return instanceOrdinal;
+        }
+        Matcher m = TRAILING_ORDINAL.matcher(instanceId);
+        return m.matches() ? Integer.parseInt(m.group(1)) : 0;
+    }
+
+    /**
+     * @param organizationIds 실행할 조직(비면 전부). staging은 전용 조직만(ADR-030)
+     * @param deniedHosts     접속하지 않을 브로커 호스트. staging은 {@code iot-data.java21.net}(실제 외부 소스 구독 금지)
+     */
+    public record SourceFilter(List<Long> organizationIds, List<String> deniedHosts) {
+        public SourceFilter {
+            organizationIds = organizationIds == null ? List.of() : List.copyOf(organizationIds);
+            deniedHosts = deniedHosts == null ? List.of() : List.copyOf(deniedHosts);
+        }
+    }
+
+    /**
+     * @param clientIdBase       소스가 client-id base를 주지 않을 때 쓰는 값
+     * @param backoffInitial     재연결 첫 간격(DSC-02.02: 1초)
+     * @param backoffMax         재연결 최대 간격(60초)
+     * @param fatalAttempts      인증·TLS처럼 다시 해도 실패가 확실한 오류를 이 횟수만큼 겪으면 ERROR(5회)
+     * @param fatalRetryInterval ERROR 상태의 재시도 간격(5분)
+     * @param confirmTimeout     스트림 confirm을 기다리는 시간. 넘으면 MQTT를 끊고 영속 세션으로 다시 접속(reliability-and-ha.md ②, 10초)
+     * @param receiveMaximum     MQTT 5 동시 미확인 메시지 한도(역압). MQTT 3.1.1은 브로커 max_inflight가 정한다
+     * @param maxPayloadBytes    이 크기를 넘는 payload는 앞부분만 기록한다(스트림 프레임 한도 보호). pipeline이 INVALID(SIZE_LIMIT)로 분류(BR-DSC-06)
+     */
+    public record Mqtt(@DefaultValue("data2flow-ingress") String clientIdBase,
+                       @DefaultValue("1s") Duration backoffInitial,
+                       @DefaultValue("60s") Duration backoffMax,
+                       @DefaultValue("5") int fatalAttempts,
+                       @DefaultValue("5m") Duration fatalRetryInterval,
+                       @DefaultValue("10s") Duration confirmTimeout,
+                       @DefaultValue("100") int receiveMaximum,
+                       @DefaultValue("524288") int maxPayloadBytes) {
+    }
+
+    /**
+     * @param host                  RabbitMQ Stream 호스트
+     * @param port                  Stream 포트(5552)
+     * @param virtualHost           vhost(prod {@code data2flow}, staging {@code data2flow-stg}, 로컬 {@code data2flow-dev})
+     * @param username              사용자
+     * @param password              비밀번호(환경변수)
+     * @param useConfiguredAddress  서버가 알려 주는 주소 대신 항상 host:port로 접속(로컬 SSH 터널·테스트, deployment.md §8.2)
+     * @param createSuperStream     없으면 {@code SuperStreamSpec.RAW}로 만든다
+     * @param maxUnconfirmed        confirm을 기다리는 메시지 한도(넘으면 발행이 기다린다 = 역압)
+     */
+    public record Stream(@DefaultValue("localhost") String host,
+                         @DefaultValue("5552") int port,
+                         @DefaultValue("data2flow-dev") String virtualHost,
+                         @DefaultValue("guest") String username,
+                         @DefaultValue("guest") String password,
+                         @DefaultValue("false") boolean useConfiguredAddress,
+                         @DefaultValue("true") boolean createSuperStream,
+                         @DefaultValue("2000") int maxUnconfirmed) {
+    }
+
+    /**
+     * @param defaultTimeout   요청이 시간을 주지 않을 때(BR-DSC-07: 15초)
+     * @param maxTimeout       요청 상한(API-DSC-51: 30초)
+     * @param maxPerOrganization 조직당 동시 테스트 수(API-DSC-51: 3)
+     */
+    public record ConnectionTest(@DefaultValue("15s") Duration defaultTimeout,
+                                 @DefaultValue("30s") Duration maxTimeout,
+                                 @DefaultValue("3") int maxPerOrganization) {
+    }
+
+    /**
+     * @param maxRatePerSecond 구독자 하나에 보내는 초당 최대 건수(API-DSC-10 기본 10/s). 넘으면 버리고 dropped로 알린다
+     * @param maxSubscribers   인스턴스 전체 동시 구독 한도
+     * @param timeout          SSE 연결 최대 유지 시간
+     */
+    public record Live(@DefaultValue("10") int maxRatePerSecond,
+                       @DefaultValue("20") int maxSubscribers,
+                       @DefaultValue("30m") Duration timeout) {
+    }
+}
