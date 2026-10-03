@@ -20,6 +20,9 @@ public abstract class AbstractIngressAppIT {
     static void infrastructure(DynamicPropertyRegistry registry) {
         RabbitTestBroker.properties().forEach((k, v) -> registry.add(k, () -> v));
         registry.add("data2flow.ingress.core-uri", CORE::uri);
+        // 플랫폼 브로커 소스도 테스트 Mosquitto만 본다(공용 iot-data에는 붙지 않음, CLAUDE.md §5)
+        registry.add("data2flow.ingress.platform-broker.url", AbstractIngressAppIT::brokerUrl);
+        registry.add("data2flow.ingress.signing.refresh-interval", () -> "60s");
         MqttTestBroker.shared();
     }
 

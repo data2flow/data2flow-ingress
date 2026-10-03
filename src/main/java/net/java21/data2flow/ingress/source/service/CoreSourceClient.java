@@ -101,6 +101,9 @@ public class CoreSourceClient {
         }
         Map<String, Secret> secrets = secrets(s.path("secrets"));
         resolveCredentialRef(config, secrets);
+        if (SourceTypes.PLATFORM_BROKER.equals(type)) {
+            applyPlatformBroker(config, secrets);
+        }
         String connectorKey = s.path("connectorKey").isString() ? s.get("connectorKey").asString()
                 : config.path("connector").isString() ? config.get("connector").asString() : null;
         String clientIdBase = s.path("clientId").isString() ? s.get("clientId").asString()
@@ -150,6 +153,59 @@ public class CoreSourceClient {
         String value = properties.credentials().get(name);
         if (value != null && !value.isBlank()) {
             secrets.put(kind, Secret.of(value));
+        }
+    }
+
+    /**
+     * 플랫폼 브로커 소스(DSC-03.01, ADR-029): core 설정에는 주소가 없으므로({@code deviceKeyPattern}·{@code allowedFormats}만)
+     * ingress 설정 {@code data2flow.ingress.platform-broker.*}의 주소·토픽·버전·접속 정보를 채운다. 소스 설정에 주소가 있으면 그대로 둔다.
+     * 접속 정보: 사용자·비밀번호가 있으면 ws·wss는 Basic 헤더, tcp·ssl은 사용자/비밀번호. 없고 주소가 {@code iot-data.java21.net}이면
+     * {@code credentials.iot-data-basic}(MQTT_BASIC_AUTH)을 Basic 헤더로 쓴다. 그 밖에는 인증 없음.
+     */
+    private void applyPlatformBroker(ObjectNode config, Map<String, Secret> secrets) {
+        if (config.hasNonNull("url") || config.hasNonNull("brokerUrl")) {
+            return;
+        }
+        IngressProperties.PlatformBroker broker = properties.platformBroker();
+        config.put("url", broker.url());
+        if (!config.has("topics") && !config.has("subscriptions")) {
+            var topics = config.putArray("topics");
+            broker.topics().stream().map(String::trim).filter(t -> !t.isEmpty())
+                    .forEach(t -> topics.addObject().put("topic", t).put("qos", 1));
+        }
+        if (!config.has("version") && broker.version() != null) {
+            config.put("version", broker.version());
+        }
+        if (config.has("auth")) {
+            return;
+        }
+        java.net.URI uri;
+        try {
+            uri = java.net.URI.create(broker.url().trim());
+        } catch (IllegalArgumentException e) {
+            return;
+        }
+        String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(java.util.Locale.ROOT);
+        boolean webSocket = "ws".equals(scheme) || "wss".equals(scheme);
+        String user = broker.username();
+        String password = broker.password();
+        if (user != null && !user.isBlank() && password != null && !password.isBlank()) {
+            if (webSocket) {
+                config.put("auth", "HEADER");
+                config.put("headerName", "Authorization");
+                secrets.put("HEADER_VALUE", Secret.of(user + ":" + password));
+            } else {
+                config.put("auth", "USERPASS");
+                config.put("username", user);
+                secrets.put("PASSWORD", Secret.of(password));
+            }
+            return;
+        }
+        String basic = properties.credentials().get("iot-data-basic");
+        if (webSocket && "iot-data.java21.net".equalsIgnoreCase(uri.getHost()) && basic != null && !basic.isBlank()) {
+            config.put("auth", "HEADER");
+            config.put("headerName", "Authorization");
+            secrets.put("HEADER_VALUE", Secret.of(basic));
         }
     }
 }

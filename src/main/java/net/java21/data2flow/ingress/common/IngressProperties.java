@@ -28,6 +28,8 @@ import java.util.regex.Pattern;
  * @param stream         {@code data2flow.raw} 스트림 접속
  * @param connectionTest 연결 테스트(API-DSC-51)
  * @param live           원본 실시간 보기(API-DSC-52)
+ * @param platformBroker 플랫폼 브로커 접속(DSC-03.01, ADR-029). PLATFORM_BROKER 소스 설정에는 주소가 없어 이 값을 쓴다
+ * @param signing        플랫폼 브로커 기기 서명 키 캐시(DSC-03.02·03.03, ADR-042)
  */
 @ConfigurationProperties("data2flow.ingress")
 public record IngressProperties(
@@ -46,7 +48,9 @@ public record IngressProperties(
         @DefaultValue Mqtt mqtt,
         @DefaultValue Stream stream,
         @DefaultValue ConnectionTest connectionTest,
-        @DefaultValue Live live) {
+        @DefaultValue Live live,
+        @DefaultValue PlatformBroker platformBroker,
+        @DefaultValue Signing signing) {
 
     private static final Pattern TRAILING_ORDINAL = Pattern.compile(".*-(\\d+)$");
 
@@ -132,5 +136,41 @@ public record IngressProperties(
     public record Live(@DefaultValue("10") int maxRatePerSecond,
                        @DefaultValue("20") int maxSubscribers,
                        @DefaultValue("30m") Duration timeout) {
+    }
+
+    /**
+     * 플랫폼 브로커(DSC-03.01, ADR-029). 운영은 공용 {@code wss://iot-data.java21.net/mqtt}을 <b>구독만</b> 한다.
+     *
+     * @param url      브로커 주소(tcp·ssl·ws·wss)
+     * @param topics   구독 토픽(쉼표 목록 가능). 기본 {@code devices/+/telemetry}(BR-DSC-12)
+     * @param version  MQTT 버전(5.0, 3.1.1)
+     * @param username 접속 사용자(선택). 비밀번호와 함께 주면 ws·wss는 Basic 헤더, tcp·ssl은 사용자/비밀번호로 접속
+     * @param password 접속 비밀번호(선택, 환경변수로만)
+     */
+    public record PlatformBroker(@DefaultValue("wss://iot-data.java21.net/mqtt") String url,
+                                 @DefaultValue("devices/+/telemetry") List<String> topics,
+                                 @DefaultValue("5.0") String version,
+                                 String username,
+                                 String password) {
+        public PlatformBroker {
+            topics = topics == null ? List.of() : List.copyOf(topics);
+        }
+
+        @Override
+        public String toString() {
+            return "PlatformBroker[url=" + url + ", topics=" + topics + ", version=" + version + ", username=" + username + "]";
+        }
+    }
+
+    /**
+     * @param refreshInterval 서명 키 전체를 다시 읽는 주기. 폐기가 1분 안에 반영되도록 60초 이하여야 한다(DSC-03.02)
+     */
+    public record Signing(@DefaultValue("30s") Duration refreshInterval) {
+        public Signing {
+            if (refreshInterval == null || refreshInterval.isZero() || refreshInterval.isNegative()
+                    || refreshInterval.compareTo(Duration.ofSeconds(60)) > 0) {
+                throw new IllegalArgumentException("data2flow.ingress.signing.refresh-interval은 0초 초과 60초 이하여야 합니다(DSC-03.02)");
+            }
+        }
     }
 }

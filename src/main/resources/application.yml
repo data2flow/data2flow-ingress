@@ -81,3 +81,13 @@ data2flow:
       virtual-host: ${DATA2FLOW_RABBITMQ_VHOST:data2flow-dev}
       username: ${DATA2FLOW_RABBITMQ_USERNAME:guest}
       password: ${DATA2FLOW_RABBITMQ_PASSWORD:guest}
+    # 플랫폼 브로커(DSC-03.01, ADR-029): PLATFORM_BROKER 소스 설정에는 주소가 없어 이 값을 쓴다. 공용 브로커는 구독만 한다
+    platform-broker:
+      url: ${DATA2FLOW_PLATFORM_BROKER_URL:wss://iot-data.java21.net/mqtt}
+      topics: ${DATA2FLOW_PLATFORM_BROKER_TOPICS:devices/+/telemetry}
+      version: ${DATA2FLOW_PLATFORM_BROKER_MQTT_VERSION:5.0}
+      username: ${DATA2FLOW_PLATFORM_BROKER_USERNAME:}
+      password: ${DATA2FLOW_PLATFORM_BROKER_PASSWORD:}
+    # 기기 서명 키 캐시(DSC-03.02: 폐기 1분 안 반영, 60초 이하만 허용)
+    signing:
+      refresh-interval: ${DATA2FLOW_SIGNING_KEY_REFRESH:30s}
