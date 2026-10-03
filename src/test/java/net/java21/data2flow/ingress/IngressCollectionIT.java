@@ -110,6 +110,7 @@ class IngressCollectionIT extends AbstractIngressAppIT {
     @DisplayName("ING-01.01 TC-ING-001·002 DSC-09.02 ChirpStack 업링크가 RawEnvelope v1로 data2flow.raw에 기록된다(dedupKey=deduplicationId, 헤더, 스키마)")
     void chirpStackUplinkIsWrittenToRawStream() {
         eventsQueue();
+        sendConfigChanged();   // 다른 IT가 먼저 띄운(캐시된) 컨텍스트여도 새 설정을 읽게 한다
         await().atMost(Duration.ofSeconds(60)).until(() -> supervisor.running().stream()
                 .anyMatch(r -> r.session().status().state() == net.java21.data2flow.contracts.connector.ConnectorState.CONNECTED));
         assertThat(CORE.lastCaller()).isEqualTo("data2flow-ingress");

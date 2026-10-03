@@ -11,6 +11,7 @@ import net.java21.data2flow.ingress.connector.service.ConnectorRegistry;
 import net.java21.data2flow.ingress.source.dto.RuntimeConfigSnapshot;
 import net.java21.data2flow.ingress.source.dto.SourceDefinition;
 import net.java21.data2flow.ingress.support.FakeConnector;
+import net.java21.data2flow.ingress.support.IngressFixtures;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -42,14 +43,7 @@ class SourceSupervisorTest {
     SourceSupervisor supervisor;
 
     static IngressProperties props(String env, String developer, List<Long> orgs, List<String> denied) {
-        return new IngressProperties("data2flow-ingress-1", -1, env, developer, "http://core", Duration.ofMinutes(5),
-                Duration.ofSeconds(30), Duration.ofMinutes(1), Duration.ofSeconds(20), true,
-                new IngressProperties.SourceFilter(orgs, denied), Map.of(),
-                new IngressProperties.Mqtt("data2flow-ingress", Duration.ofSeconds(1), Duration.ofSeconds(60), 5,
-                        Duration.ofMinutes(5), Duration.ofSeconds(10), 100, 524288),
-                new IngressProperties.Stream("h", 5552, "v", "u", "p", false, true, 100),
-                new IngressProperties.ConnectionTest(Duration.ofSeconds(15), Duration.ofSeconds(30), 3),
-                new IngressProperties.Live(10, 20, Duration.ofMinutes(30)));
+        return IngressFixtures.props(env, developer, orgs, denied);
     }
 
     @BeforeEach
@@ -70,9 +64,7 @@ class SourceSupervisorTest {
     }
 
     static SourceDefinition source(long id, String lifecycle, String url, String topic) {
-        JsonNode config = JSON.readTree("{\"url\":\"" + url + "\",\"topics\":[{\"topic\":\"" + topic + "\",\"qos\":1}]}");
-        return new SourceDefinition(id, 1, SourceTypes.MQTT_SUBSCRIBE, lifecycle, null, config,
-                Map.of("PASSWORD", Secret.of("p")), null);
+        return IngressFixtures.source(id, lifecycle, url, topic);
     }
 
     static RuntimeConfigSnapshot snapshot(String v, SourceDefinition... sources) {
