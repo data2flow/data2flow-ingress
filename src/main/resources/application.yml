@@ -1,4 +1,5 @@
 # 공통 설정(design/conventions.md §4). 환경별 값은 application-{local,staging,prod}.yml, 비밀값은 환경변수.
+# 키 설명과 .env 키 이름은 README "설정"에 있다.
 spring:
   application:
     name: data2flow-ingress
@@ -8,7 +9,21 @@ spring:
     virtual:
       enabled: true
   lifecycle:
+    # 종료 단계마다 최대 30초: 소스 drain(최대 20초) → 스트림 생산자 닫기(reliability-and-ha.md §4.1)
     timeout-per-shutdown-phase: 30s
+  messages:
+    basename: messages
+    encoding: UTF-8
+    fallback-to-system-locale: false
+  # RabbitMQ AMQP(s4, vhost: prod data2flow · staging data2flow-stg · local data2flow-dev, ADR-020·030):
+  # data2flow.config 설정 변경 수신, data2flow.events 상태 보고
+  rabbitmq:
+    host: ${DATA2FLOW_RABBITMQ_HOST:localhost}
+    port: ${DATA2FLOW_RABBITMQ_PORT:5672}
+    virtual-host: ${DATA2FLOW_RABBITMQ_VHOST:data2flow-dev}
+    username: ${DATA2FLOW_RABBITMQ_USERNAME:guest}
+    password: ${DATA2FLOW_RABBITMQ_PASSWORD:guest}
+    connection-timeout: 5s
 server:
   port: 8080
   shutdown: graceful
@@ -25,6 +40,41 @@ management:
     health:
       probes:
         enabled: true
+      group:
+        # readiness: data2flow.raw에 기록할 수 있어야 한다(reliability-and-ha.md §4.2). AMQP(설정·상태 이벤트)는 잠시 없어도 수집은 계속
+        readiness:
+          include: readinessState,rawStream
+  health:
+    rabbit:
+      enabled: false
   metrics:
     tags:
       application: ${spring.application.name}
+  tracing:
+    sampling:
+      probability: ${DATA2FLOW_TRACING_SAMPLING:0.1}
+  # OTLP 내보내기는 주소를 정한 환경에서만(OPS-02.03). 지표는 Prometheus로 본다
+  otlp:
+    metrics:
+      export:
+        enabled: false
+
+data2flow:
+  ingress:
+    # 파드 이름(StatefulSet data2flow-ingress-0·-1). 끝 번호가 client-id 번호(BR-DSC-01)
+    instance-id: ${HOSTNAME:ingress-local-0}
+    env: ${DATA2FLOW_INGRESS_ENV:dev}
+    developer: ${DATA2FLOW_DEV_NAME:}
+    core-uri: ${DATA2FLOW_CORE_URI:http://data2flow-core-api}
+    source-filter:
+      organization-ids: ${DATA2FLOW_INGRESS_ORGANIZATION_IDS:}
+      denied-hosts: ${DATA2FLOW_INGRESS_DENIED_HOSTS:}
+    # auth.credentialRef가 가리키는 비밀값(core가 비밀값을 주지 않을 때만). iot-data는 사용자:비밀번호(.env MQTT_BASIC_AUTH)
+    credentials:
+      iot-data-basic: ${MQTT_BASIC_AUTH:}
+    stream:
+      host: ${DATA2FLOW_RABBITMQ_HOST:localhost}
+      port: ${DATA2FLOW_RABBITMQ_STREAM_PORT:5552}
+      virtual-host: ${DATA2FLOW_RABBITMQ_VHOST:data2flow-dev}
+      username: ${DATA2FLOW_RABBITMQ_USERNAME:guest}
+      password: ${DATA2FLOW_RABBITMQ_PASSWORD:guest}

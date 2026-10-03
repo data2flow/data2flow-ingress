@@ -1,5 +1,13 @@
 # staging: JSON 로그(요청 ID는 MDC requestId), 비밀값은 k8s Secret 환경변수
+# 실제 외부 소스는 구독하지 않는다(시뮬레이터 데이터만, deployment.md §9·ADR-030): 공용 브로커 호스트를 막고 staging 전용 조직만 실행
 logging:
   structured:
     format:
       console: ecs
+    json:
+      customizer: net.java21.data2flow.contracts.secret.SecretMaskingJsonMembersCustomizer
+data2flow:
+  ingress:
+    env: stg
+    source-filter:
+      denied-hosts: ${DATA2FLOW_INGRESS_DENIED_HOSTS:iot-data.java21.net}

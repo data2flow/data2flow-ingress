@@ -1,4 +1,12 @@
-# 로컬 개발. 인프라는 s3 SSH 터널·공용 개발 DB로 붙는다(design/deployment.md §8.2). 비밀값은 루트 .env
+# 로컬 개발. RabbitMQ는 s3 SSH 터널(localhost:5672·5552), vhost data2flow-dev(design/deployment.md §8.2, ADR-030). 비밀값은 루트 .env
+# client-id는 data2flow-ingress-dev-{DATA2FLOW_DEV_NAME}-{n}(CLAUDE.md §5). 같은 ID로 접속하면 다른 사람의 연결이 끊긴다
 logging:
   level:
     net.java21.data2flow: DEBUG
+data2flow:
+  ingress:
+    env: dev
+    core-uri: ${DATA2FLOW_CORE_URI:http://localhost:8082}
+    stream:
+      # 서버가 알려 주는 10.116.64.14 대신 터널 localhost:5552로 접속
+      use-configured-address: true

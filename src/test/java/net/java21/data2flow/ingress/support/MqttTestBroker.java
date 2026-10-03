@@ -15,6 +15,7 @@ public final class MqttTestBroker {
 
     public static final int MQTT_PORT = 1883;
     public static final int WS_PORT = 9001;
+    private static final String ACL = "topic read allowed/#\n";
     private static final String CONFIG = """
             listener 1883
             protocol mqtt
@@ -47,6 +48,19 @@ public final class MqttTestBroker {
         return new GenericContainer<>("eclipse-mosquitto:2.0")
                 .withExposedPorts(MQTT_PORT, WS_PORT)
                 .withCopyToContainer(Transferable.of(CONFIG), "/mosquitto/config/mosquitto.conf")
+                .waitingFor(Wait.forListeningPorts(MQTT_PORT).withStartupTimeout(Duration.ofMinutes(2)));
+    }
+
+    /**
+     * 구독 권한이 {@code allowed/#}뿐인 별도 브로커(구독 거부 시험, TC-DSC-303). per_listener_settings로 한 브로커에 섞으면 Mosquitto 2.0이
+     * 오프라인 영속 세션에 메시지를 쌓지 않으므로 따로 띄운다.
+     */
+    public static GenericContainer<?> createAclBroker() {
+        return new GenericContainer<>("eclipse-mosquitto:2.0")
+                .withExposedPorts(MQTT_PORT)
+                .withCopyToContainer(Transferable.of("listener 1883\nallow_anonymous true\nacl_file /mosquitto/config/acl\n"),
+                        "/mosquitto/config/mosquitto.conf")
+                .withCopyToContainer(Transferable.of(ACL, 0600), "/mosquitto/config/acl")
                 .waitingFor(Wait.forListeningPorts(MQTT_PORT).withStartupTimeout(Duration.ofMinutes(2)));
     }
 

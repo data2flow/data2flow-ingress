@@ -3,3 +3,8 @@ logging:
   structured:
     format:
       console: ecs
+    json:
+      customizer: net.java21.data2flow.contracts.secret.SecretMaskingJsonMembersCustomizer
+data2flow:
+  ingress:
+    env: prod
