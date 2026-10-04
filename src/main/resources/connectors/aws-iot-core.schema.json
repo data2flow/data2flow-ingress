@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data2flow.java21.net/schemas/connectors/aws-iot-core-1.0.0.json",
+  "title": "AWS IoT Core",
+  "description": "엔드포인트 8883에 X.509 클라이언트 인증서(mTLS)로 접속해 토픽을 구독한다. 비밀값 CLIENT_CERT·CLIENT_KEY·CA_CERT.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "endpoint",
+    "topics"
+  ],
+  "properties": {
+    "endpoint": {
+      "type": "string",
+      "description": "예: abc123-ats.iot.ap-northeast-2.amazonaws.com"
+    },
+    "url": {
+      "type": "string",
+      "pattern": "^(tcp|mqtt|ssl|mqtts|ws|wss)://[^\\s/:]+(:\\d{1,5})?(/.*)?$"
+    },
+    "topics": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 20,
+      "items": {
+        "type": "string"
+      }
+    },
+    "version": {
+      "type": "string",
+      "enum": [
+        "5.0",
+        "3.1.1"
+      ],
+      "default": "3.1.1"
+    },
+    "keepaliveSec": {
+      "type": "integer",
+      "minimum": 10,
+      "maximum": 600,
+      "default": 60
+    },
+    "sessionExpirySec": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 604800,
+      "default": 3600
+    },
+    "qos": {
+      "type": "integer",
+      "enum": [
+        0,
+        1,
+        2
+      ],
+      "default": 1
+    },
+    "sharedGroup": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,64}$",
+      "description": "MQTT 5 공유 구독(SCALABLE)"
+    },
+    "clientIdBase": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,80}$"
+    },
+    "tlsInsecure": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "x-ui": {
+    "tabs": [
+      {
+        "name": "connection",
+        "fields": [
+          "endpoint",
+          "url",
+          "topics"
+        ]
+      },
+      {
+        "name": "session",
+        "fields": [
+          "version",
+          "keepaliveSec",
+          "sessionExpirySec",
+          "qos",
+          "sharedGroup",
+          "clientIdBase",
+          "tlsInsecure"
+        ]
+      }
+    ]
+  }
+}

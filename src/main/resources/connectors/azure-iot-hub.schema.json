@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data2flow.java21.net/schemas/connectors/azure-iot-hub-1.0.0.json",
+  "title": "Azure IoT Hub (MQTT)",
+  "description": "장치 엔드포인트에 SAS 토큰(비밀값 SAS_KEY로 생성)으로 접속해 클라우드→장치 토픽을 구독한다. 전체 텔레메트리는 Event Hubs 호환 엔드포인트(amqp10 커넥터)로 받는다.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "hubName",
+    "deviceId"
+  ],
+  "properties": {
+    "hubName": {
+      "type": "string"
+    },
+    "deviceId": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string",
+      "pattern": "^(tcp|mqtt|ssl|mqtts|ws|wss)://[^\\s/:]+(:\\d{1,5})?(/.*)?$"
+    },
+    "topics": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "sasTtlSec": {
+      "type": "integer",
+      "minimum": 300,
+      "maximum": 2592000,
+      "default": 86400
+    },
+    "version": {
+      "type": "string",
+      "enum": [
+        "5.0",
+        "3.1.1"
+      ],
+      "default": "3.1.1"
+    },
+    "keepaliveSec": {
+      "type": "integer",
+      "minimum": 10,
+      "maximum": 600,
+      "default": 60
+    },
+    "sessionExpirySec": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 604800,
+      "default": 3600
+    },
+    "qos": {
+      "type": "integer",
+      "enum": [
+        0,
+        1,
+        2
+      ],
+      "default": 1
+    },
+    "sharedGroup": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,64}$",
+      "description": "MQTT 5 공유 구독(SCALABLE)"
+    },
+    "clientIdBase": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,80}$"
+    },
+    "tlsInsecure": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "x-ui": {
+    "tabs": [
+      {
+        "name": "connection",
+        "fields": [
+          "hubName",
+          "deviceId",
+          "url",
+          "topics",
+          "sasTtlSec"
+        ]
+      },
+      {
+        "name": "session",
+        "fields": [
+          "version",
+          "keepaliveSec",
+          "sessionExpirySec",
+          "qos",
+          "sharedGroup",
+          "clientIdBase",
+          "tlsInsecure"
+        ]
+      }
+    ]
+  }
+}

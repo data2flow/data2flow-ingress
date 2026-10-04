@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data2flow.java21.net/schemas/connectors/modbus-tcp-1.0.0.json",
+  "title": "Modbus TCP",
+  "description": "읽기 함수(01·02·03·04)로 폴링한다. snapshot: 측정점 값 {unitId, values}, log: 기록 카운터 + 고리형 기록 영역을 위치 저장으로 무손실 읽기(CURSOR). 리더 1대만 실행(SINGLETON). 쓰기는 하지 않는다.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["host"],
+  "properties": {
+    "host": {"type": "string"},
+    "port": {"type": "integer", "minimum": 1, "maximum": 65535, "default": 502},
+    "unitId": {"type": "integer", "minimum": 0, "maximum": 255, "default": 1},
+    "mode": {"type": "string", "enum": ["snapshot", "log"], "default": "snapshot"},
+    "intervalSec": {"type": "integer", "minimum": 10, "maximum": 86400, "default": 60},
+    "topic": {"type": "string"},
+    "points": {"type": "array", "maxItems": 200, "items": {"type": "object", "additionalProperties": false, "required": ["name"], "properties": {
+      "name": {"type": "string", "pattern": "^[A-Za-z0-9_.-]{1,64}$"},
+      "register": {"type": "string", "pattern": "^[0134]\\d{4,5}$", "description": "Modicon 표기(예: 40001). 있으면 function·address 대신"},
+      "function": {"type": "string", "enum": ["COIL", "DISCRETE", "INPUT", "HOLDING"]},
+      "address": {"type": "integer", "minimum": 0, "maximum": 65535, "description": "0부터 세는 주소"},
+      "type": {"type": "string", "enum": ["BOOL", "INT16", "UINT16", "INT32", "UINT32", "FLOAT32"]},
+      "wordOrder": {"type": "string", "enum": ["BIG", "LITTLE"], "default": "BIG"},
+      "scale": {"type": "number", "default": 1},
+      "offset": {"type": "number", "default": 0}}}},
+    "log": {"type": "object", "additionalProperties": false, "properties": {
+      "counterAddress": {"type": "integer", "default": 0, "description": "기록 수(UINT32, 보유 레지스터 2개)"},
+      "recordAddress": {"type": "integer", "default": 100},
+      "recordLength": {"type": "integer", "minimum": 1, "maximum": 125, "default": 4},
+      "ringSize": {"type": "integer", "minimum": 1, "maximum": 60000, "default": 1000}}}
+  },
+  "x-ui": {"tabs": [{"name": "connection", "fields": ["host", "port", "unitId", "intervalSec", "topic"]}, {"name": "points", "fields": ["mode", "points", "log"]}]}
+}

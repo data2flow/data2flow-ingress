@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data2flow.java21.net/schemas/connectors/opcua-1.0.0.json",
+  "title": "OPC UA 구독",
+  "description": "노드를 모니터링해 값이 바뀔 때 받은 DataValue 하나를 원본 하나로 넘긴다(AT-DSC-11.2). 구독 알림이라 유실 가능(AckMode NONE). 리더 1대만 실행(SINGLETON). 쓰기는 하지 않는다. 비밀값 PASSWORD·CLIENT_CERT·CLIENT_KEY·CA_CERT.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["endpointUrl", "nodes"],
+  "properties": {
+    "endpointUrl": {"type": "string", "pattern": "^opc\\.tcp://\\S+$", "description": "예: opc.tcp://plc.example.com:4840/milo"},
+    "securityPolicy": {"type": "string", "enum": ["None", "Basic256Sha256"], "default": "None"},
+    "securityMode": {"type": "string", "enum": ["Sign", "SignAndEncrypt"], "default": "SignAndEncrypt"},
+    "username": {"type": "string"},
+    "nodes": {"type": "array", "minItems": 1, "maxItems": 1000, "items": {"type": "object", "additionalProperties": false, "required": ["nodeId"], "properties": {"nodeId": {"type": "string", "description": "예: ns=2;s=Boiler/Temperature"}, "name": {"type": "string", "description": "RawEnvelope.topic(비우면 nodeId)"}}}},
+    "samplingIntervalMs": {"type": "number", "minimum": 0, "default": 0, "description": "0이면 서버가 가장 빠른 값(변화 즉시)"},
+    "publishingIntervalMs": {"type": "number", "minimum": 50, "default": 500},
+    "queueSize": {"type": "integer", "minimum": 1, "maximum": 10000, "default": 100},
+    "payload": {"type": "string", "enum": ["json", "value"], "default": "json", "description": "json: {nodeId, value, sourceTime, serverTime, status}, value: 값 그대로"},
+    "tlsInsecure": {"type": "boolean", "default": false, "description": "서버 인증서 검증 끄기(개발 소스만)"}
+  },
+  "x-ui": {"tabs": [{"name": "connection", "fields": ["endpointUrl", "securityPolicy", "securityMode", "username"]}, {"name": "nodes", "fields": ["nodes", "samplingIntervalMs", "publishingIntervalMs", "queueSize", "payload"]}]}
+}

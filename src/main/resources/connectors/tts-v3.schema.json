@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data2flow.java21.net/schemas/connectors/tts-v3-1.0.0.json",
+  "title": "The Things Stack v3",
+  "description": "MQTT 통합: 사용자 이름 {applicationId}@{tenantId}, 비밀번호는 API 키(비밀값 PASSWORD), 토픽 v3/{사용자}/devices/+/up, 디코더 tts-v3.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "host",
+    "applicationId"
+  ],
+  "properties": {
+    "host": {
+      "type": "string",
+      "description": "예: eu1.cloud.thethings.network"
+    },
+    "url": {
+      "type": "string",
+      "pattern": "^(tcp|mqtt|ssl|mqtts|ws|wss)://[^\\s/:]+(:\\d{1,5})?(/.*)?$"
+    },
+    "applicationId": {
+      "type": "string"
+    },
+    "tenantId": {
+      "type": "string",
+      "default": "ttn"
+    },
+    "event": {
+      "type": "string",
+      "enum": [
+        "up",
+        "join",
+        "down/ack"
+      ],
+      "default": "up"
+    },
+    "version": {
+      "type": "string",
+      "enum": [
+        "5.0",
+        "3.1.1"
+      ],
+      "default": "3.1.1"
+    },
+    "keepaliveSec": {
+      "type": "integer",
+      "minimum": 10,
+      "maximum": 600,
+      "default": 60
+    },
+    "sessionExpirySec": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 604800,
+      "default": 3600
+    },
+    "qos": {
+      "type": "integer",
+      "enum": [
+        0,
+        1,
+        2
+      ],
+      "default": 1
+    },
+    "sharedGroup": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,64}$",
+      "description": "MQTT 5 공유 구독(SCALABLE)"
+    },
+    "clientIdBase": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,80}$"
+    },
+    "tlsInsecure": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "x-ui": {
+    "tabs": [
+      {
+        "name": "connection",
+        "fields": [
+          "host",
+          "url",
+          "applicationId",
+          "tenantId",
+          "event"
+        ]
+      },
+      {
+        "name": "session",
+        "fields": [
+          "version",
+          "keepaliveSec",
+          "sessionExpirySec",
+          "qos",
+          "sharedGroup",
+          "clientIdBase",
+          "tlsInsecure"
+        ]
+      }
+    ]
+  }
+}
