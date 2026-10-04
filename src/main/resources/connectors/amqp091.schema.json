@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data2flow.java21.net/schemas/connectors/amqp091-1.0.0.json",
+  "title": "AMQP 0-9-1 (RabbitMQ)",
+  "description": "큐에서 수동 확인으로 가져와 기록(confirm) 뒤 ack(AFTER_WRITE, AT-DSC-20.1). 큐는 만들지 않는다. 비밀값 PASSWORD·CA_CERT·CLIENT_CERT·CLIENT_KEY는 비밀값 저장소에 둔다(BR-DSC-02).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["url", "queue"],
+  "properties": {
+    "url": {"type": "string", "pattern": "^amqps?://[^\\s/:]+(:\\d{1,5})?/?$", "description": "예: amqps://broker.example.com:5671"},
+    "vhost": {"type": "string", "default": "/"},
+    "queue": {"type": "string", "minLength": 1, "maxLength": 255},
+    "username": {"type": "string", "maxLength": 256},
+    "batchSize": {"type": "integer", "minimum": 1, "maximum": 1000, "default": 100, "description": "한 번에 가져와 함께 확인하는 수"},
+    "tlsInsecure": {"type": "boolean", "default": false, "description": "인증서 검증 끄기. 개발 소스만(BR-DSC-29)"}
+  },
+  "x-ui": {"tabs": [{"name": "connection", "fields": ["url", "vhost", "queue", "batchSize"]}, {"name": "security", "fields": ["username", "tlsInsecure"]}]}
+}

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data2flow.java21.net/schemas/connectors/nats-jetstream-1.0.0.json",
+  "title": "NATS JetStream",
+  "description": "지속 pull 소비자로 받고 기록(confirm) 뒤 ack(AFTER_WRITE). 비밀값 PASSWORD 또는 TOKEN, TLS는 CA_CERT·CLIENT_CERT·CLIENT_KEY.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["url", "subject"],
+  "properties": {
+    "url": {"type": "string", "pattern": "^(nats|tls)://[^\\s/:]+(:\\d{1,5})?/?$"},
+    "stream": {"type": "string", "maxLength": 255, "description": "비우면 주제로 찾는다"},
+    "subject": {"type": "string", "minLength": 1, "maxLength": 255, "description": "예: sensors.>"},
+    "durable": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$", "description": "비우면 data2flow-ingress-{소스 ID}"},
+    "username": {"type": "string", "maxLength": 256},
+    "batchSize": {"type": "integer", "minimum": 1, "maximum": 1000, "default": 100}
+  },
+  "x-ui": {"tabs": [{"name": "connection", "fields": ["url", "stream", "subject", "durable", "batchSize"]}, {"name": "security", "fields": ["username"]}]}
+}

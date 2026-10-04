@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data2flow.java21.net/schemas/connectors/kafka-1.0.0.json",
+  "title": "Apache Kafka",
+  "description": "소비자 그룹으로 받고 기록(confirm) 뒤 오프셋을 커밋한다(AFTER_WRITE, AT-DSC-20.2). SASL 비밀번호는 비밀값 PASSWORD.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["bootstrapServers", "topics"],
+  "properties": {
+    "bootstrapServers": {"type": "string", "pattern": "^[^\\s,]+:\\d{1,5}(,[^\\s,]+:\\d{1,5})*$", "description": "예: kafka-1:9092,kafka-2:9092"},
+    "topics": {"type": "array", "minItems": 1, "maxItems": 20, "items": {"type": "string", "minLength": 1, "maxLength": 249}},
+    "groupId": {"type": "string", "maxLength": 255, "description": "비우면 data2flow-ingress-{소스 ID}"},
+    "securityProtocol": {"type": "string", "enum": ["PLAINTEXT", "SSL", "SASL_PLAINTEXT", "SASL_SSL"], "default": "PLAINTEXT"},
+    "saslMechanism": {"type": "string", "enum": ["PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512"], "default": "SCRAM-SHA-512"},
+    "username": {"type": "string", "maxLength": 256},
+    "startFrom": {"type": "string", "enum": ["earliest", "latest"], "default": "earliest", "description": "그룹에 커밋 위치가 없을 때"},
+    "batchSize": {"type": "integer", "minimum": 1, "maximum": 10000, "default": 500}
+  },
+  "x-ui": {"tabs": [{"name": "connection", "fields": ["bootstrapServers", "topics", "groupId", "startFrom", "batchSize"]}, {"name": "security", "fields": ["securityProtocol", "saslMechanism", "username"]}]}
+}

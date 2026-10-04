@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data2flow.java21.net/schemas/connectors/amqp10-1.0.0.json",
+  "title": "AMQP 1.0",
+  "description": "ActiveMQ Artemis·Azure Service Bus·RabbitMQ 4(/queues/{이름})·Event Hubs 호환 엔드포인트에서 받는다. 기록(confirm) 뒤 accepted(AFTER_WRITE). 비밀값 PASSWORD 또는 TOKEN(SAS), CA_CERT·CLIENT_CERT·CLIENT_KEY.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["url", "address"],
+  "properties": {
+    "url": {"type": "string", "pattern": "^amqps?://[^\\s/:]+(:\\d{1,5})?/?$"},
+    "address": {"type": "string", "minLength": 1, "maxLength": 512, "description": "큐·주소. RabbitMQ 4는 /queues/{이름}"},
+    "username": {"type": "string", "maxLength": 256},
+    "batchSize": {"type": "integer", "minimum": 1, "maximum": 1000, "default": 100},
+    "tlsInsecure": {"type": "boolean", "default": false}
+  },
+  "x-ui": {"tabs": [{"name": "connection", "fields": ["url", "address", "batchSize"]}, {"name": "security", "fields": ["username", "tlsInsecure"]}]}
+}

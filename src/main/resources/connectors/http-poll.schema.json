@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data2flow.java21.net/schemas/connectors/http-poll-1.0.0.json",
+  "title": "HTTP 폴링",
+  "description": "주기마다 REST GET을 불러 배열 항목 하나를 원본 하나로 넘긴다. 증분 커서·ETag·페이지네이션, 기록(confirm) 뒤 위치 저장(CURSOR, BR-DSC-24). 리더 1대만 실행(SINGLETON). 비밀값 PASSWORD·TOKEN·API_KEY·OAUTH2_CLIENT·CA_CERT·CLIENT_CERT·CLIENT_KEY.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["url"],
+  "properties": {
+    "url": {"type": "string", "pattern": "^https?://\\S+$"},
+    "query": {"type": "object", "additionalProperties": {"type": "string"}},
+    "headers": {"type": "object", "additionalProperties": {"type": "string"}, "description": "비밀이 아닌 헤더만. 비밀은 auth로"},
+    "intervalSec": {"type": "integer", "minimum": 10, "maximum": 86400, "default": 60},
+    "itemsPath": {"type": "string", "default": "", "description": "항목 배열의 JSON Pointer(예: /items). 비우면 본문이 배열"},
+    "cursorParam": {"type": "string", "description": "증분 기준을 보낼 쿼리 이름(예: since)"},
+    "cursorField": {"type": "string", "description": "항목 안 커서 값의 JSON Pointer(예: /ts)"},
+    "nextCursorPath": {"type": "string", "description": "응답의 다음 커서 JSON Pointer(예: /next)"},
+    "pageTokenParam": {"type": "string"},
+    "nextPageTokenPath": {"type": "string"},
+    "pageSizeParam": {"type": "string"},
+    "pageSize": {"type": "integer", "minimum": 1, "maximum": 10000, "default": 100},
+    "etag": {"type": "boolean", "default": false, "description": "If-None-Match로 바뀐 것만 받기"},
+    "topic": {"type": "string", "description": "RawEnvelope.topic. 비우면 URL 경로"},
+    "auth": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "type": {"type": "string", "enum": ["NONE", "BASIC", "BEARER", "API_KEY", "OAUTH2_CC"], "default": "NONE"},
+        "username": {"type": "string"}, "headerName": {"type": "string", "default": "X-API-Key"},
+        "tokenUrl": {"type": "string"}, "clientId": {"type": "string"}, "scope": {"type": "string"}
+      }
+    },
+    "tlsInsecure": {"type": "boolean", "default": false}
+  },
+  "x-ui": {"tabs": [{"name": "connection", "fields": ["url", "query", "headers", "intervalSec"]}, {"name": "paging", "fields": ["itemsPath", "cursorParam", "cursorField", "nextCursorPath", "pageTokenParam", "nextPageTokenPath", "pageSizeParam", "pageSize", "etag", "topic"]}, {"name": "security", "fields": ["auth", "tlsInsecure"]}]}
+}

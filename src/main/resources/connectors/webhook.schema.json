@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data2flow.java21.net/schemas/connectors/webhook-1.0.0.json",
+  "title": "HTTP Webhook 수신",
+  "description": "POST https://data2flow-hook.java21.net/ingest/webhook/{sourceKey}. 서명 X-D2F-Signature = hex(HMAC-SHA256(HMAC_KEY, timestamp + '.' + body)), X-D2F-Timestamp ±toleranceSec, X-D2F-Request-Id 10분 재생 거부(BR-DSC-10). 기록 confirm 뒤 202(AFTER_WRITE). 비밀값 HMAC_KEY.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["sourceKey"],
+  "properties": {
+    "sourceKey": {"type": "string", "pattern": "^[A-Za-z0-9_-]{16,64}$", "description": "경로용 난수(core가 32자로 만든다)"},
+    "toleranceSec": {"type": "integer", "minimum": 30, "maximum": 3600, "default": 300},
+    "idHeader": {"type": "string", "default": "X-D2F-Request-Id"},
+    "topic": {"type": "string", "description": "RawEnvelope.topic. 비우면 webhook/{sourceKey 앞 8자}"}
+  },
+  "x-ui": {"tabs": [{"name": "connection", "fields": ["sourceKey", "toleranceSec", "idHeader", "topic"]}]}
+}

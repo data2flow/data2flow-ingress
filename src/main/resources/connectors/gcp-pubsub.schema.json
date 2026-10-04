@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data2flow.java21.net/schemas/connectors/gcp-pubsub-1.0.0.json",
+  "title": "Google Cloud Pub/Sub",
+  "description": "구독에서 pull로 받아 기록(confirm) 뒤 acknowledge(AFTER_WRITE). 인증은 비밀값 GCP_SERVICE_ACCOUNT(서비스 계정 키 JSON), 토큰은 만료 전 자동 갱신(BR-DSC-27).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["project", "subscription"],
+  "properties": {
+    "endpoint": {"type": "string", "default": "https://pubsub.googleapis.com", "description": "에뮬레이터는 http://host:port(인증 없음)"},
+    "project": {"type": "string", "minLength": 1, "maxLength": 63},
+    "subscription": {"type": "string", "minLength": 3, "maxLength": 255},
+    "batchSize": {"type": "integer", "minimum": 1, "maximum": 1000, "default": 100}
+  },
+  "x-ui": {"tabs": [{"name": "connection", "fields": ["endpoint", "project", "subscription", "batchSize"]}]}
+}

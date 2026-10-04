@@ -17,7 +17,7 @@ public class InvalidSettingsException extends IllegalArgumentException {
         this.field = field;
     }
 
-    static InvalidSettingsException config(String field) {
+    public static InvalidSettingsException config(String field) {
         return new InvalidSettingsException(Reason.CONFIG_INVALID, field);
     }
 

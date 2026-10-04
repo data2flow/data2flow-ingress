@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data2flow.java21.net/schemas/connectors/coap-1.0.0.json",
+  "title": "CoAP observe",
+  "description": "자원을 관찰(RFC 7641)해 알림 하나를 원본 하나로 넘긴다. 상대가 다시 보내 주지 않아 유실 가능(AckMode NONE). 리더 1대만 실행(SINGLETON).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["resources"],
+  "properties": {
+    "resources": {"type": "array", "minItems": 1, "maxItems": 50, "items": {"type": "string", "pattern": "^coap://\\S+$"}, "description": "예: coap://192.0.2.10:5683/sensors/temp"},
+    "confirmable": {"type": "boolean", "default": true, "description": "관찰 요청을 CON으로 보낸다"}
+  },
+  "x-ui": {"tabs": [{"name": "connection", "fields": ["resources", "confirmable"]}]}
+}

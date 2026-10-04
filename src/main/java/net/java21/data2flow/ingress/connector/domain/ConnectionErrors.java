@@ -21,6 +21,9 @@ public final class ConnectionErrors {
 
     public static ConnectionErrorKind classify(Throwable error) {
         for (Throwable t = error; t != null; t = t.getCause()) {
+            if (t instanceof SecurityException) {
+                return ConnectionErrorKind.AUTH;   // HTTP 401·403, 토큰 거부(M5 커넥터)
+            }
             if (t instanceof UnknownHostException) {
                 return ConnectionErrorKind.DNS;
             }
