@@ -188,7 +188,7 @@ public class WebhookConnector implements SourceConnector {
                 count("signatureRejected");
                 return Result.of(400, "INVALID_REQUEST");
             }
-            if (replay.seen(config.sourceId(), requestId, now)) {
+            if (replay.seen(config.organizationId(), config.sourceId(), requestId, now)) {
                 count("replayRejected");
                 return Result.of(409, "WEBHOOK_REPLAYED");
             }
@@ -210,7 +210,7 @@ public class WebhookConnector implements SourceConnector {
                     }
                 }
             }
-            replay.remember(config.sourceId(), requestId, now);
+            replay.remember(config.organizationId(), config.sourceId(), requestId, now);
             received.incrementAndGet();
             lastReceivedAt = now;
             return new Result(202, null, requestId, now);

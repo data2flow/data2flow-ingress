@@ -91,3 +91,22 @@ data2flow:
     # 기기 서명 키 캐시(DSC-03.02: 폐기 1분 안 반영, 60초 이하만 허용)
     signing:
       refresh-interval: ${DATA2FLOW_SIGNING_KEY_REFRESH:30s}
+    # 폴링 위치·리더 리스·Webhook 재생 방지 저장소(스키마 data2flow_ingress, ADR-052). url이 비면 메모리(로컬 전용)
+    db:
+      url: ${DATA2FLOW_INGRESS_DB_URL:}
+      username: ${DATA2FLOW_DB_USERNAME:data2flow}
+      password: ${DATA2FLOW_DB_PASSWORD:}
+      flyway-mode: validate
+    # SINGLETON 커넥터 리더 리스(BR-DSC-26): 30초, 10초마다 갱신 → 리더가 죽으면 40초 안에 넘겨받음
+    lease:
+      ttl: 30s
+      renew-every: 10s
+    # 사용자 폴링 주기 하한(PollingPolicy.MIN_INTERVAL, DSC-09.09)
+    polling:
+      min-interval: 10s
+    # Webhook 수신(API-DSC-54): 스트림 confirm을 기다리는 시간, 넘으면 503
+    webhook:
+      write-timeout: 30s
+  # Webhook(/ingest/webhook/**)·엣지(/edge/**)는 gateway를 거치지 않는 외부 경로라 신원 헤더가 없다(서명·mTLS로 인증, ADR-029)
+  identity:
+    optional-paths: /ingest/webhook/**,/edge/**

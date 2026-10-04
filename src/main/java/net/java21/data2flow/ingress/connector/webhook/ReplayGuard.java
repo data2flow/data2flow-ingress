@@ -15,10 +15,10 @@ public interface ReplayGuard {
     Duration WINDOW = Duration.ofMinutes(10);
 
     /** 이미 처리한 요청 ID인가 */
-    boolean seen(long sourceId, String requestId, Instant now);
+    boolean seen(long organizationId, long sourceId, String requestId, Instant now);
 
     /** 처리한 요청 ID를 기억한다 */
-    void remember(long sourceId, String requestId, Instant now);
+    void remember(long organizationId, long sourceId, String requestId, Instant now);
 
     /** 인스턴스 메모리(DB가 없을 때, 단일 인스턴스) */
     static ReplayGuard inMemory() {
@@ -30,13 +30,13 @@ public interface ReplayGuard {
         private final Map<String, Instant> seen = new ConcurrentHashMap<>();
 
         @Override
-        public boolean seen(long sourceId, String requestId, Instant now) {
+        public boolean seen(long organizationId, long sourceId, String requestId, Instant now) {
             Instant at = seen.get(sourceId + ":" + requestId);
             return at != null && at.plus(WINDOW).isAfter(now);
         }
 
         @Override
-        public void remember(long sourceId, String requestId, Instant now) {
+        public void remember(long organizationId, long sourceId, String requestId, Instant now) {
             if (seen.size() > 100_000) {
                 seen.values().removeIf(at -> at.plus(WINDOW).isBefore(now));
             }

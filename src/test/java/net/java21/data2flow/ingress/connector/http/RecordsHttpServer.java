@@ -20,15 +20,15 @@ import java.util.concurrent.Executors;
  * 계약 IT의 상대 REST API(실제 HTTP 서버, JDK). 추가만 되는 레코드 목록을 {@code GET /records?since=N&limit=M}으로 돌려준다:
  * {@code {"items":[…], "next":"N+k"}}. 확인 수 = 커넥터가 저장한 폴링 위치({@code next}).
  */
-final class RecordsHttpServer implements ContractPeer, AutoCloseable {
+public final class RecordsHttpServer implements ContractPeer, AutoCloseable {
 
-    final List<byte[]> records = new CopyOnWriteArrayList<>();
+    public final List<byte[]> records = new CopyOnWriteArrayList<>();
     private final HttpServer server;
     private final InMemoryPollCursorStore store;
     private final long sourceId;
     volatile int requests;
 
-    RecordsHttpServer(InMemoryPollCursorStore store, long sourceId) {
+    public RecordsHttpServer(InMemoryPollCursorStore store, long sourceId) {
         this.store = store;
         this.sourceId = sourceId;
         try {
@@ -41,7 +41,7 @@ final class RecordsHttpServer implements ContractPeer, AutoCloseable {
         server.start();
     }
 
-    String url() {
+    public String url() {
         return "http://127.0.0.1:" + server.getAddress().getPort() + "/records";
     }
 

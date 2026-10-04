@@ -30,6 +30,10 @@ import java.util.regex.Pattern;
  * @param live           원본 실시간 보기(API-DSC-52)
  * @param platformBroker 플랫폼 브로커 접속(DSC-03.01, ADR-029). PLATFORM_BROKER 소스 설정에는 주소가 없어 이 값을 쓴다
  * @param signing        플랫폼 브로커 기기 서명 키 캐시(DSC-03.02·03.03, ADR-042)
+ * @param db             폴링 위치·리더 리스·Webhook 재생 방지 저장소(스키마 {@code data2flow_ingress}, ADR-052). url이 비면 메모리
+ * @param lease          SINGLETON 커넥터 리더 리스(BR-DSC-26)
+ * @param polling        폴링 커넥터 공통(DSC-09.09)
+ * @param webhook        Webhook 수신(DSC-01.03)
  */
 @ConfigurationProperties("data2flow.ingress")
 public record IngressProperties(
@@ -50,7 +54,11 @@ public record IngressProperties(
         @DefaultValue ConnectionTest connectionTest,
         @DefaultValue Live live,
         @DefaultValue PlatformBroker platformBroker,
-        @DefaultValue Signing signing) {
+        @DefaultValue Signing signing,
+        @DefaultValue Db db,
+        @DefaultValue Lease lease,
+        @DefaultValue Polling polling,
+        @DefaultValue Webhook webhook) {
 
     private static final Pattern TRAILING_ORDINAL = Pattern.compile(".*-(\\d+)$");
 
@@ -172,5 +180,46 @@ public record IngressProperties(
                 throw new IllegalArgumentException("data2flow.ingress.signing.refresh-interval은 0초 초과 60초 이하여야 합니다(DSC-03.02)");
             }
         }
+    }
+
+    /**
+     * ingress 전용 저장소(ADR-052: {@code data2flow_ingress.source_poll_cursors}·{@code connector_leases}·{@code webhook_requests}).
+     *
+     * @param url         JDBC 주소. 비면 저장소 없이 메모리(인스턴스 하나·재시작하면 처음부터, 로컬 개발용)
+     * @param username    사용자
+     * @param password    비밀번호(환경변수)
+     * @param flywayMode  {@code migrate}(staging만, expand 마이그레이션), {@code validate}(prod·local), {@code none}(ADR-030)
+     * @param maxPoolSize 연결 풀 크기
+     */
+    public record Db(String url, String username, String password, @DefaultValue("validate") String flywayMode,
+                     @DefaultValue("4") int maxPoolSize) {
+        public boolean enabled() {
+            return url != null && !url.isBlank();
+        }
+
+        @Override
+        public String toString() {
+            return "Db[url=" + url + ", username=" + username + ", flywayMode=" + flywayMode + "]";
+        }
+    }
+
+    /**
+     * @param ttl        리스 길이(ConnectorLease.TTL 30초)
+     * @param renewEvery 갱신·대기 소스 리스 시도 주기(10초). 리더가 죽으면 ttl + renewEvery(40초) 안에 다른 인스턴스가 넘겨받는다(60초 이내)
+     */
+    public record Lease(@DefaultValue("30s") Duration ttl, @DefaultValue("10s") Duration renewEvery) {
+        public Lease {
+            if (renewEvery.compareTo(ttl) >= 0) {
+                throw new IllegalArgumentException("data2flow.ingress.lease.renew-every는 ttl보다 짧아야 합니다(BR-DSC-26)");
+            }
+        }
+    }
+
+    /** @param minInterval 사용자 폴링 주기의 하한(PollingPolicy.MIN_INTERVAL 10초) */
+    public record Polling(@DefaultValue("10s") Duration minInterval) {
+    }
+
+    /** @param writeTimeout 스트림 기록 confirm을 기다리는 시간. 넘으면 503(상대가 다시 보냄) */
+    public record Webhook(@DefaultValue("30s") Duration writeTimeout) {
     }
 }

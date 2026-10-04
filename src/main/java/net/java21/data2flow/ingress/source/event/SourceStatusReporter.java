@@ -45,6 +45,7 @@ public class SourceStatusReporter implements SourceSupervisor.StatusListener, So
             Executors.newSingleThreadScheduledExecutor(Thread.ofPlatform().daemon().name("source-report").factory());
     private final Map<Long, long[]> lastStats = new ConcurrentHashMap<>();
     private final Map<Long, Integer> lastReconnects = new ConcurrentHashMap<>();
+    private final Map<String, Long> lastExtra = new ConcurrentHashMap<>();
     private SourceSupervisor supervisor;
 
     /**
@@ -110,6 +111,13 @@ public class SourceStatusReporter implements SourceSupervisor.StatusListener, So
             counters.put("received", Math.max(0, received - last[0]));
             counters.put("bytes", Math.max(0, bytes - last[1]));
             counters.put("reconnects", (long) Math.max(0, reconnects - lastRe));
+            if (r.session() instanceof net.java21.data2flow.ingress.connector.common.SessionCounters extra) {
+                // Webhook 서명 실패·시각 오차·재생 거부 등(TC-DSC-186): 세션 누적값의 1분 차이
+                extra.counters().forEach((name, total) -> {
+                    Long prev = lastExtra.put(id + ":" + name, total);
+                    counters.put(name, Math.max(0, total - (prev == null ? 0 : prev)));
+                });
+            }
             SourceStatsReported payload = new SourceStatsReported(id, minute, SourceStatsReported.Producer.INGRESS, counters);
             publisher.execute(() -> events.publish(DomainEvent.of(EventType.SOURCE_STATS_1M,
                     r.definition().organizationId(), payload, null, clock)));

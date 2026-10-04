@@ -8,3 +8,7 @@ logging:
 data2flow:
   ingress:
     env: prod
+    # 저장소(ADR-052): 공용 DB data2flow의 스키마 data2flow_ingress. Flyway validate(ADR-030: staging만 migrate, expand 전용)
+    db:
+      url: jdbc:postgresql://${DATA2FLOW_DB_HOST_INTERNAL}:${DATA2FLOW_DB_PORT}/${DATA2FLOW_DB_NAME}?ApplicationName=data2flow-ingress&socketTimeout=30&connectTimeout=5
+      flyway-mode: validate

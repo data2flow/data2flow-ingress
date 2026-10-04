@@ -43,7 +43,7 @@ import java.util.Set;
  * 기록이 실패하면 {@code :modifyAckDeadline 0}으로 바로 다시 받는다. 같은 구독을 여러 인스턴스가 나눠 받는다(SCALABLE).
  *
  * <p>connectors.md §2는 {@code google-cloud-pubsub}(Apache-2.0, gRPC)를 적었지만 의존성이 커서(gRPC·Guava·protobuf) JDK HttpClient로
- * REST를 직접 부른다(같은 의미, ADR-049). 인증은 서비스 계정 키(비밀값 {@code GCP_SERVICE_ACCOUNT}, JSON)로 받은 토큰이고
+ * REST를 직접 부른다(같은 의미, ADR-052). 인증은 서비스 계정 키(비밀값 {@code GCP_SERVICE_ACCOUNT}, JSON)로 받은 토큰이고
  * 만료 전에 갱신한다(BR-DSC-27). {@code endpoint}가 http면 에뮬레이터로 보고 인증하지 않는다. 실제 계정이 없으므로 계약 시험은 Pub/Sub
  * REST를 흉내 낸 서버로만 한다(ADR-040).
  */

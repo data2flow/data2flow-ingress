@@ -40,7 +40,11 @@ public final class IngressFixtures {
                 new IngressProperties.ConnectionTest(Duration.ofSeconds(15), Duration.ofSeconds(30), 3),
                 new IngressProperties.Live(10, 20, Duration.ofMinutes(30)),
                 platformBroker,
-                new IngressProperties.Signing(Duration.ofSeconds(30)));
+                new IngressProperties.Signing(Duration.ofSeconds(30)),
+                new IngressProperties.Db(null, null, null, "validate", 4),
+                new IngressProperties.Lease(Duration.ofSeconds(30), Duration.ofSeconds(10)),
+                new IngressProperties.Polling(Duration.ofSeconds(10)),
+                new IngressProperties.Webhook(Duration.ofSeconds(30)));
     }
 
     public static SourceDefinition source(long id, String lifecycle, String url, String topic) {

@@ -6,6 +6,8 @@ import io.micrometer.core.instrument.MeterRegistry;
 import net.java21.data2flow.contracts.connector.ConnectionErrorKind;
 import net.java21.data2flow.contracts.connector.ConnectorContext;
 import net.java21.data2flow.contracts.connector.ConnectorSession;
+import net.java21.data2flow.contracts.connector.ConnectorState;
+import net.java21.data2flow.contracts.connector.ScalingMode;
 import net.java21.data2flow.contracts.connector.ConnectorStatus;
 import net.java21.data2flow.contracts.connector.RawSink;
 import net.java21.data2flow.contracts.connector.SourceConfig;
@@ -16,6 +18,8 @@ import net.java21.data2flow.ingress.common.IngressProperties;
 import net.java21.data2flow.ingress.connector.domain.DrainableSession;
 import net.java21.data2flow.ingress.connector.mqtt.InvalidSettingsException;
 import net.java21.data2flow.ingress.connector.service.ConnectorRegistry;
+import net.java21.data2flow.ingress.lease.service.LeaseManager;
+import net.java21.data2flow.ingress.lease.service.LocalLeaseManager;
 import net.java21.data2flow.ingress.source.dto.RuntimeConfigSnapshot;
 import net.java21.data2flow.ingress.source.dto.SourceDefinition;
 import org.slf4j.Logger;
@@ -44,6 +48,8 @@ import java.util.function.UnaryOperator;
  *       없음, BR-DSC-05), lifecycle만 바뀌면 일시정지·재개, 목록에서 빠지면 닫는다.</li>
  *   <li>client-id: {@code {base}-{env}-{n}}(운영 {@code data2flow-ingress-prod-1}, 개발자 {@code …-dev-{이름}-{n}}, BR-DSC-01).</li>
  *   <li>종료: 다른 빈보다 먼저 멈추며 모든 세션을 동시에 drain(최대 20초)한 뒤 스트림 생산자가 닫힌다(reliability-and-ha.md §4.1).</li>
+ *   <li>SINGLETON 커넥터(폴링·OPC UA·CoAP·SSE)는 리더 리스를 얻은 인스턴스만 연다. 못 얻으면 대기하고 리스 주기마다 다시 시도한다. 리스를
+ *       잃으면 즉시 닫는다(DSC-09.10, BR-DSC-26). 폴링 위치는 리스에 묶인 저장소에 쓴다.</li>
  * </ul>
  */
 public class SourceSupervisor implements SmartLifecycle {
@@ -61,9 +67,16 @@ public class SourceSupervisor implements SmartLifecycle {
         void onReceived(RawEnvelope envelope);
     }
 
-    /** 실행 중인 소스 하나 */
+    /**
+     * 실행 중인 소스 하나
+     *
+     * @param lease SINGLETON 커넥터의 리더 리스(BR-DSC-26). 그 밖은 null
+     */
     public record Running(SourceDefinition definition, SourceConfig config, ConnectorSession session,
-                          SourceCounters counters) {
+                          SourceCounters counters, LeaseManager.Held lease) {
+        public Running(SourceDefinition definition, SourceConfig config, ConnectorSession session, SourceCounters counters) {
+            this(definition, config, session, counters, null);
+        }
     }
 
     /** 소스별 누적 통계(EVT-DSC-03 원천) */
@@ -89,6 +102,10 @@ public class SourceSupervisor implements SmartLifecycle {
     private final Clock clock;
     private final UnaryOperator<RawEnvelope> envelopeFilter;
     private final Map<Long, Running> running = new java.util.concurrent.ConcurrentHashMap<>();
+    /** 리스를 얻지 못해 기다리는 SINGLETON 소스(다른 인스턴스가 리더, DSC-09.10) */
+    private final Map<Long, SourceDefinition> standby = new java.util.concurrent.ConcurrentHashMap<>();
+    private LeaseManager leases = new LocalLeaseManager();
+    private java.util.concurrent.ScheduledExecutorService leaseTimer;
     private final Set<Long> warnedSkipped = new HashSet<>();
     private volatile boolean started;
 
@@ -117,6 +134,11 @@ public class SourceSupervisor implements SmartLifecycle {
                 .description("이 인스턴스가 실행 중인 소스 세션 수").register(meters);
     }
 
+    /** SINGLETON 커넥터 리스·폴링 위치 저장소(ADR-052). 기본은 메모리(인스턴스 하나) */
+    public void useLeaseManager(LeaseManager leases) {
+        this.leases = leases;
+    }
+
     /** core 설정을 반영한다. 같은 설정이 다시 와도 아무것도 하지 않는다(멱등) */
     public synchronized void apply(RuntimeConfigSnapshot snapshot) {
         if (!started) {
@@ -135,7 +157,12 @@ public class SourceSupervisor implements SmartLifecycle {
                 drain(r);
             }
         }
+        standby.keySet().removeIf(id -> !wanted.containsKey(id));
         for (SourceDefinition d : wanted.values()) {
+            if (standby.containsKey(d.id())) {
+                standby.put(d.id(), d);   // 리더가 아니면 최신 설정만 기억한다
+                continue;
+            }
             Running r = running.get(d.id());
             if (r != null && r.definition().sameConnection(d)) {
                 if (r.definition().paused() != d.paused()) {
@@ -146,7 +173,7 @@ public class SourceSupervisor implements SmartLifecycle {
                     }
                     log.info("소스 {} {}", d.id(), d.paused() ? "일시정지(세션 유지)" : "재개");
                 }
-                running.put(d.id(), new Running(d, r.config(), r.session(), r.counters()));
+                running.put(d.id(), new Running(d, r.config(), r.session(), r.counters(), r.lease()));
                 continue;
             }
             if (r != null) {
@@ -177,17 +204,21 @@ public class SourceSupervisor implements SmartLifecycle {
         return true;
     }
 
-    private static String host(SourceDefinition d) {
-        String url = d.config().path("url").asString(null);
-        if (url == null) {
-            return null;
+    /** 접속 대상 호스트(source-filter.denied-hosts 비교). 커넥터마다 주소 필드 이름이 다르다 */
+    static String host(SourceDefinition d) {
+        for (String field : new String[]{"url", "endpointUrl", "cseUrl", "endpoint"}) {
+            String url = d.config().path(field).asString(null);
+            if (url != null) {
+                try {
+                    String h = URI.create(url.trim()).getHost();
+                    return h == null ? null : h.toLowerCase(Locale.ROOT);
+                } catch (IllegalArgumentException e) {
+                    return null;
+                }
+            }
         }
-        try {
-            String h = URI.create(url.trim()).getHost();
-            return h == null ? null : h.toLowerCase(Locale.ROOT);
-        } catch (IllegalArgumentException e) {
-            return null;
-        }
+        String host = d.config().path("host").asString(null);
+        return host == null ? null : host.toLowerCase(Locale.ROOT);
     }
 
     private void open(SourceDefinition d, SourceCounters counters) {
@@ -197,6 +228,19 @@ public class SourceSupervisor implements SmartLifecycle {
             log.warn("소스 {}: 커넥터 {}가 이 ingress에 없습니다(CONNECTOR_UNAVAILABLE)", d.id(), key);
             statusListener.onStatus(d, ConnectorStatus.error(ConnectionErrorKind.OTHER, "CONNECTOR_UNAVAILABLE: " + key));
             return;
+        }
+        LeaseManager.Held lease = null;
+        if (connector.descriptor().scaling() == ScalingMode.SINGLETON) {
+            lease = leases.tryAcquire(d.organizationId(), d.id()).orElse(null);
+            if (lease == null) {
+                if (standby.put(d.id(), d) == null) {
+                    log.info("소스 {}: 다른 인스턴스가 리더라 대기합니다(SINGLETON, BR-DSC-26)", d.id());
+                    statusListener.onStatus(d, new ConnectorStatus(ConnectorState.DISCONNECTED, null,
+                            "STANDBY: 다른 ingress 인스턴스가 리더입니다", null, null, 0, 0, null));
+                }
+                return;
+            }
+            standby.remove(d.id());
         }
         SourceConfig config = new SourceConfig(d.organizationId(), d.id(), d.type(), key, d.config(), d.secrets(),
                 clientId(d));
@@ -214,20 +258,23 @@ public class SourceSupervisor implements SmartLifecycle {
             });
         };
         ConnectorContext ctx = new ConnectorContext(properties.instanceId(), clock,
-                status -> statusListener.onStatus(current(d.id(), d), status));
+                status -> statusListener.onStatus(current(d.id(), d), status),
+                lease == null ? null : leases.cursorStore(lease));
         try {
             ConnectorSession session = connector.open(config, sink, ctx);
-            running.put(d.id(), new Running(d, config, session, counters));
+            running.put(d.id(), new Running(d, config, session, counters, lease));
             if (d.paused()) {
                 session.pause();
             }
             session.start();
             log.info("소스 {} 실행 시작(커넥터 {}, client-id {}, {})", d.id(), key, config.clientId(), d.lifecycle());
         } catch (InvalidSettingsException e) {
+            releaseQuietly(lease);
             log.warn("소스 {} 설정 오류: {}", d.id(), e.getMessage());
             statusListener.onStatus(d, ConnectorStatus.error(ConnectionErrorKind.PROTOCOL,
                     "SOURCE_CONFIG_INVALID: " + e.field()));
         } catch (RuntimeException e) {
+            releaseQuietly(lease);
             log.warn("소스 {} 세션을 열 수 없습니다: {}", d.id(), e.toString());
             statusListener.onStatus(d, ConnectorStatus.error(ConnectionErrorKind.OTHER, e.getClass().getSimpleName()));
         }
@@ -255,6 +302,58 @@ public class SourceSupervisor implements SmartLifecycle {
         } else {
             r.session().close();
         }
+        releaseQuietly(r.lease());
+    }
+
+    private void releaseQuietly(LeaseManager.Held lease) {
+        if (lease == null) {
+            return;
+        }
+        try {
+            leases.release(lease);
+        } catch (RuntimeException e) {
+            log.debug("소스 {} 리스 반납 실패(만료되면 넘어간다): {}", lease.sourceId(), e.toString());
+        }
+    }
+
+    /**
+     * 리스 주기 작업(BR-DSC-26, {@code lease.renew-every}): 가진 리스를 연장하고, 잃었으면 즉시 수집을 멈추고 대기로 돌린다. 대기 중인 소스는
+     * 리스를 다시 시도해 얻으면 연다(리더가 죽으면 ttl + 주기 안에 넘겨받음).
+     */
+    public synchronized void leaseTick() {
+        if (!started) {
+            return;
+        }
+        for (Running r : new ArrayList<>(running.values())) {
+            if (r.lease() == null) {
+                continue;
+            }
+            boolean kept;
+            try {
+                kept = leases.renew(r.lease());
+            } catch (RuntimeException e) {
+                log.warn("소스 {} 리스 연장 실패: {}", r.definition().id(), e.toString());
+                kept = false;
+            }
+            if (!kept) {
+                log.warn("소스 {}: 리스를 잃어 수집을 멈춥니다(fencing token {})", r.definition().id(), r.lease().fencingToken());
+                running.remove(r.definition().id());
+                r.session().close();
+                standby.put(r.definition().id(), r.definition());
+            }
+        }
+        for (SourceDefinition d : new ArrayList<>(standby.values())) {
+            try {
+                open(d, new SourceCounters());
+            } catch (RuntimeException e) {
+                log.warn("소스 {} 리스 시도 실패: {}", d.id(), e.toString());
+            }
+        }
+    }
+
+    /** 리스를 기다리는 소스(상태 보고·시험용) */
+    public Collection<Long> standby() {
+        return List.copyOf(standby.keySet());
     }
 
     /** 지금 실행 중인 소스(상태 보고용 사본) */
@@ -265,6 +364,10 @@ public class SourceSupervisor implements SmartLifecycle {
     @Override
     public void start() {
         started = true;
+        long every = properties.lease().renewEvery().toMillis();
+        leaseTimer = java.util.concurrent.Executors.newSingleThreadScheduledExecutor(
+                Thread.ofPlatform().daemon().name("connector-lease").factory());
+        leaseTimer.scheduleWithFixedDelay(this::leaseTick, every, every, java.util.concurrent.TimeUnit.MILLISECONDS);
     }
 
     /** 종료: 모든 세션을 동시에 drain한다. 새 메시지는 확인하지 않아 다른 ingress·재접속 뒤에 다시 받는다 */
@@ -273,8 +376,12 @@ public class SourceSupervisor implements SmartLifecycle {
         List<Running> all;
         synchronized (this) {
             started = false;
+            if (leaseTimer != null) {
+                leaseTimer.shutdownNow();
+            }
             all = new ArrayList<>(running.values());
             running.clear();
+            standby.clear();
         }
         List<Thread> threads = all.stream().map(r -> Thread.ofVirtual().start(() -> drain(r))).toList();
         for (Thread t : threads) {

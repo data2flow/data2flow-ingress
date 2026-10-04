@@ -257,6 +257,26 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
+            <!-- DSC-09.14 TC-DSC-318: 실행 의존성 SBOM(CycloneDX)을 만들고 ConnectorLicenseTest가 금지 라이선스 0건을 확인한다(ADR-018) -->
+            <plugin>
+                <groupId>org.cyclonedx</groupId>
+                <artifactId>cyclonedx-maven-plugin</artifactId>
+                <version>2.9.1</version>
+                <configuration>
+                    <outputFormat>json</outputFormat>
+                    <outputName>bom</outputName>
+                    <includeTestScope>false</includeTestScope>
+                    <includeProvidedScope>false</includeProvidedScope>
+                    <includeSystemScope>false</includeSystemScope>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>sbom</id>
+                        <phase>process-test-classes</phase>
+                        <goals><goal>makeBom</goal></goals>
+                    </execution>
+                </executions>
+            </plugin>
             <!-- *IT는 failsafe로 verify 단계에서 실행(design/testing) -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

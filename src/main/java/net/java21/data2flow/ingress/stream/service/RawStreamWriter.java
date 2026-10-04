@@ -63,8 +63,7 @@ public class RawStreamWriter implements RawSink, SmartLifecycle {
     private final SuperStreamSpec spec;
     private final MessageCodec codec;
     private final MessageTracing tracing;
-    private final ScheduledExecutorService scheduler =
-            Executors.newSingleThreadScheduledExecutor(Thread.ofPlatform().daemon().name("raw-stream-init").factory());
+    private volatile ScheduledExecutorService scheduler = newScheduler();
     private final Backoff backoff = new Backoff(Duration.ofSeconds(1), Duration.ofSeconds(30), Integer.MAX_VALUE,
             Duration.ofSeconds(30));
     private final AtomicInteger unconfirmed = new AtomicInteger();
@@ -151,9 +150,16 @@ public class RawStreamWriter implements RawSink, SmartLifecycle {
     }
 
     @Override
-    public void start() {
+    public synchronized void start() {
+        if (scheduler.isShutdown()) {
+            scheduler = newScheduler();   // 멈췄다 다시 시작(Spring 7 시험 컨텍스트 일시정지·재개)
+        }
         running = true;
         scheduler.execute(this::initialize);
+    }
+
+    private static ScheduledExecutorService newScheduler() {
+        return Executors.newSingleThreadScheduledExecutor(Thread.ofPlatform().daemon().name("raw-stream-init").factory());
     }
 
     private void initialize() {

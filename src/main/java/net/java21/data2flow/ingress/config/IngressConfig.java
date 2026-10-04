@@ -149,13 +149,15 @@ public class IngressConfig {
     @Bean
     SourceSupervisor sourceSupervisor(IngressProperties properties, ConnectorRegistry registry, RawStreamWriter writer,
                                       SourceStatusReporter reporter, LiveTap liveTap, MeterRegistry meters, Clock clock,
-                                      PayloadSignatureVerifier verifier) {
+                                      PayloadSignatureVerifier verifier,
+                                      net.java21.data2flow.ingress.lease.service.LeaseManager leaseManager) {
         SourceSupervisor.ReceivedListener received = (RawEnvelope e) -> {
             liveTap.onReceived(e);
             reporter.onReceived(e);
         };
         SourceSupervisor supervisor = new SourceSupervisor(properties, registry, writer, reporter, received, meters, clock,
                 verifier);
+        supervisor.useLeaseManager(leaseManager);
         reporter.attach(supervisor);
         return supervisor;
     }

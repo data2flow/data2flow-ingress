@@ -2,7 +2,7 @@
 
 외부 MQTT 브로커를 **구독만** 해서 받은 원본을 RabbitMQ Super Stream `data2flow.raw`에 기록하고, **publisher confirm을 받은 뒤에만** 브로커에 확인(PUBACK)하는 수집 서비스입니다. 수집 경로를 만들거나 운영하는 백엔드 개발자가 읽습니다. 다 읽으면 로컬에서 실행하고, 설정 키와 비밀값을 넣고, 무손실 시험을 돌릴 수 있습니다.
 
-- 관련 스펙: ING-01.01·01.03, DSC-01.02·01.04·01.05·02.01~02.06·07.01·07.03·09.02~09.04·09.10·09.11, NFR-01.01~01.04·02.02~02.04·02.09, OPS-01.02·02.03 (정본은 비공개 저장소 `data2flow-docs`)
+- 관련 스펙: ING-01.01·01.03, DSC-01.02·01.03·01.04·01.05·02.01~02.06·05.01·07.01·07.03·07.04·09.01~09.11·09.14, NFR-01.01~01.04·02.02~02.04·02.09, OPS-01.02·02.03 (정본은 비공개 저장소 `data2flow-docs`)
 - 패키지: `net.java21.data2flow.ingress` · Spring Boot 4.1.1 · Java 21 · Maven Wrapper
 - 포트: API 8080(내부 전용), actuator 8081(프로브·지표·소스별 연결 상태)
 
@@ -28,6 +28,28 @@
 | 관측 | readiness = `data2flow.raw` 생산자 준비. 지표 `data2flow_ingress_*`, 소스별 상태 `/actuator/health`의 `sources` | OPS-01.02 |
 
 **구독 전용입니다.** 운영 코드에는 MQTT 발행 경로가 없고(`ArchitectureTest`가 HiveMQ 발행 API 호출을 막습니다), 송신 API(API-DSC-61)는 만들지 않았습니다(ACT-03.02 결정 대기).
+
+### 커넥터 카탈로그 (M5, DSC-09, ADR-052)
+
+빈으로 둔 커넥터가 시작할 때 카탈로그(EVT-DSC-09)로 보고된다. 모두 계약 키트(`AbstractConnectorContractTest`)를 통과했다. 상대·TC는 `data2flow-docs` design/connectors.md §5.
+
+| 키 | 라이브러리(라이선스) | 확인 방식 | 확장 |
+|---|---|---|---|
+| `mqtt`, `sparkplug-b`, `tts-v3`, `aws-iot-core`, `azure-iot-hub` | HiveMQ MQTT Client(Apache-2.0) | AFTER_WRITE | DUAL_ACTIVE(공유 구독이면 SCALABLE) |
+| `amqp091` / `amqp10` | RabbitMQ Java Client(MPL/Apache) / Qpid ProtonJ2(Apache-2.0) | AFTER_WRITE | SCALABLE |
+| `kafka` / `nats-jetstream` | kafka-clients / jnats(Apache-2.0) | AFTER_WRITE | SCALABLE |
+| `gcp-pubsub` | JDK HttpClient(REST v1) | AFTER_WRITE | SCALABLE |
+| `webhook` | Spring MVC `POST /ingest/webhook/{sourceKey}`(HMAC·재생 방지) | AFTER_WRITE(202) | SCALABLE |
+| `http-poll` / `http-sse` | JDK HttpClient | CURSOR | SINGLETON |
+| `coap` | Eclipse Californium(EPL-2.0/EDL-1.0) | NONE | SINGLETON |
+| `opcua` | Eclipse Milo(EPL-2.0) | NONE | SINGLETON |
+| `modbus-tcp` | j2mod(Apache-2.0) | CURSOR | SINGLETON |
+| `bacnet-ip` | 직접 구현(ReadProperty·ReadRange, BACnet4J GPL 미사용) | CURSOR | SINGLETON |
+| `onem2m` | 직접 구현(HTTP 바인딩) | CURSOR | SINGLETON |
+| `file-s3` | AWS SDK v2(Apache-2.0) | CURSOR | SINGLETON |
+
+- **SINGLETON 리스·폴링 위치:** 저장소 `data2flow.ingress.db.url`(스키마 `data2flow_ingress`, Flyway: staging만 migrate)이 있으면 리스를 얻은 인스턴스만 연다(30초, 10초마다 연장). 리스를 잃은 쪽의 커서 저장은 fencing token으로 거부된다. 저장소가 없으면 메모리(로컬 전용).
+- **받기만 한다:** 발행·쓰기 API 호출은 `ArchitectureTest`가 막는다. 라이선스는 `ConnectorLicenseTest`가 CycloneDX SBOM(`target/bom.json`)으로 확인한다.
 
 ## 2. 빌드와 실행
 
@@ -76,6 +98,10 @@
 | `data2flow.ingress.platform-broker.version` | `DATA2FLOW_PLATFORM_BROKER_MQTT_VERSION` | `5.0` | MQTT 버전 |
 | `data2flow.ingress.platform-broker.username`·`password` | `DATA2FLOW_PLATFORM_BROKER_USERNAME`·`_PASSWORD` | (없음) | 있으면 ws·wss는 Basic 헤더, tcp·ssl은 사용자/비밀번호. 없고 주소가 `iot-data.java21.net`이면 `MQTT_BASIC_AUTH`를 Basic 헤더로 쓴다 |
 | `data2flow.ingress.signing.refresh-interval` | `DATA2FLOW_SIGNING_KEY_REFRESH` | `30s` | 서명 키 다시 읽기 주기. 60초를 넘으면 기동 실패(DSC-03.02 폐기 1분 안 반영) |
+| `data2flow.ingress.db.url`·`username`·`password`·`flyway-mode` | `DATA2FLOW_INGRESS_DB_URL`(staging·prod는 `DATA2FLOW_DB_HOST_INTERNAL`·`PORT`·`NAME`으로 만든다), `DATA2FLOW_DB_USERNAME`, `DATA2FLOW_DB_PASSWORD` | (없음 = 메모리), `validate` | 폴링 위치·리스·Webhook 재생 방지(ADR-052) |
+| `data2flow.ingress.lease.ttl`·`renew-every` | – | `30s`·`10s` | SINGLETON 리더 리스(BR-DSC-26) |
+| `data2flow.ingress.polling.min-interval` | – | `10s` | 폴링 주기 하한(DSC-09.09) |
+| `data2flow.ingress.webhook.write-timeout` | – | `30s` | Webhook 기록 confirm 대기, 넘으면 503 |
 | `management.tracing.sampling.probability` | `DATA2FLOW_TRACING_SAMPLING` | `0.1` | 추적 표본 비율(OTLP 내보내기는 주소를 정한 환경만) |
 
 ### 소스 설정(core-api가 주는 `config`)
@@ -102,6 +128,7 @@ payload = "v1." + hex(HMAC-SHA256(서명 키 UTF-8, body)) + "." + body      # h
 | `GracefulShutdownIT` | TC-ING-021: SIGTERM 때 기록 중 메시지 confirm·PUBACK 후 종료, 유실 0·중복 0 |
 | `MqttManualAckIT` | TC-ING-016: Stream이 끊긴 동안 PUBACK 0, 복구 후 재전송으로 모두 기록 |
 | `PlatformBrokerSignatureIT`, `PayloadSignatureVerifierTest`, `SigningKeyCacheTest` | TC-DSC-114·322: 승인 전 UNSIGNED, 자격 변경 후 서명 맞음 VERIFIED·서명 없음·다른 기기 키 INVALID, 폐기 키 제거, 60초 이하 주기 |
+| `*ConnectorContractIT`(M5 커넥터 19종), `SingletonLeaderLeaseIT`, `IngressConnectorCatalogIT`, `ConnectorLicenseTest` | 커넥터 계약 키트(TC-DSC-241~251·324~327), 리스 넘겨받기·fencing(TC-DSC-295), 카탈로그·Webhook·DB 커서 앱 시험(TC-DSC-319), 라이선스 0건(TC-DSC-318) |
 | `ReconnectBackoffIT`, `ConnectorScalingIT`, `StagedConnectionTestIT`, `IngressCollectionIT` | 재연결 1·2·4·8초, 공유 구독 1만 건 분배·이중 수신, 단계별 연결 테스트, 수집 경로 전체 |
 
 ## 5. 작업 규칙

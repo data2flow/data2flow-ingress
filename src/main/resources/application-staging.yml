@@ -11,3 +11,7 @@ data2flow:
     env: stg
     source-filter:
       denied-hosts: ${DATA2FLOW_INGRESS_DENIED_HOSTS:iot-data.java21.net}
+    # 저장소(ADR-052): 공용 DB data2flow의 스키마 data2flow_ingress. Flyway migrate(ADR-030: staging만 migrate, expand 전용)
+    db:
+      url: jdbc:postgresql://${DATA2FLOW_DB_HOST_INTERNAL}:${DATA2FLOW_DB_PORT}/${DATA2FLOW_DB_NAME}?ApplicationName=data2flow-ingress&socketTimeout=30&connectTimeout=5
+      flyway-mode: migrate
