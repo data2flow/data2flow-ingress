@@ -105,6 +105,7 @@ public class SourceSupervisor implements SmartLifecycle {
     /** 리스를 얻지 못해 기다리는 SINGLETON 소스(다른 인스턴스가 리더, DSC-09.10) */
     private final Map<Long, SourceDefinition> standby = new java.util.concurrent.ConcurrentHashMap<>();
     private LeaseManager leases = new LocalLeaseManager();
+    private volatile net.java21.data2flow.ingress.downlink.service.ChirpStackAckRouter downlinkAcks;
     private java.util.concurrent.ScheduledExecutorService leaseTimer;
     private final Set<Long> warnedSkipped = new HashSet<>();
     private volatile boolean started;
@@ -137,6 +138,11 @@ public class SourceSupervisor implements SmartLifecycle {
     /** SINGLETON 커넥터 리스·폴링 위치 저장소(ADR-052). 기본은 메모리(인스턴스 하나) */
     public void useLeaseManager(LeaseManager leases) {
         this.leases = leases;
+    }
+
+    /** ChirpStack 다운링크 결과(event/ack·txack)를 원본 스트림 대신 EVT-ACT-09로 낸다(ACT-03.03). 없으면 모두 원본으로 기록한다 */
+    public void useDownlinkAckRouter(net.java21.data2flow.ingress.downlink.service.ChirpStackAckRouter router) {
+        this.downlinkAcks = router;
     }
 
     /** core 설정을 반영한다. 같은 설정이 다시 와도 아무것도 하지 않는다(멱등) */
@@ -248,6 +254,11 @@ public class SourceSupervisor implements SmartLifecycle {
                 .tag("sourceId", Long.toString(d.id())).description("스트림 기록까지 끝난 수신 메시지 수(DSC-02.03)")
                 .register(meters);
         RawSink sink = received -> {
+            var acks = downlinkAcks;
+            if (acks != null && acks.matches(received)) {
+                // 텔레메트리가 아니다: 이벤트 발행 confirm 뒤에 확인한다(원본 스트림·수신 통계에는 넣지 않음)
+                return acks.route(received);
+            }
             RawEnvelope envelope = envelopeFilter.apply(received);
             CompletionStage<Void> write = writer.write(envelope);
             return write.thenRun(() -> {

@@ -33,6 +33,7 @@ import org.springframework.amqp.core.FanoutExchange;
 import org.springframework.amqp.core.TopicExchange;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import net.java21.data2flow.ingress.downlink.service.ChirpStackAckRouter;
 import org.springframework.amqp.rabbit.listener.AsyncConsumerStartedEvent;
 import org.springframework.amqp.rabbit.listener.SimpleMessageListenerContainer;
 import org.springframework.beans.factory.ObjectProvider;
@@ -146,11 +147,19 @@ public class IngressConfig {
         return new PayloadSignatureVerifier(keys, meters);
     }
 
+    /** ChirpStack 다운링크 결과 → EVT-ACT-09(ACT-03.03, ADR-054 남은 것 ①) */
+    @Bean
+    ChirpStackAckRouter chirpStackAckRouter(SourceEventPublisher events, ObjectProvider<JsonMapper> json, MeterRegistry meters,
+                                            Clock clock) {
+        return new ChirpStackAckRouter(events, json.getIfAvailable(MessageCodec::newMapper), meters, clock);
+    }
+
     @Bean
     SourceSupervisor sourceSupervisor(IngressProperties properties, ConnectorRegistry registry, RawStreamWriter writer,
                                       SourceStatusReporter reporter, LiveTap liveTap, MeterRegistry meters, Clock clock,
                                       PayloadSignatureVerifier verifier,
-                                      net.java21.data2flow.ingress.lease.service.LeaseManager leaseManager) {
+                                      net.java21.data2flow.ingress.lease.service.LeaseManager leaseManager,
+                                      ChirpStackAckRouter downlinkAcks) {
         SourceSupervisor.ReceivedListener received = (RawEnvelope e) -> {
             liveTap.onReceived(e);
             reporter.onReceived(e);
@@ -158,6 +167,7 @@ public class IngressConfig {
         SourceSupervisor supervisor = new SourceSupervisor(properties, registry, writer, reporter, received, meters, clock,
                 verifier);
         supervisor.useLeaseManager(leaseManager);
+        supervisor.useDownlinkAckRouter(downlinkAcks);
         reporter.attach(supervisor);
         return supervisor;
     }

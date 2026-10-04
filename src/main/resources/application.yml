@@ -24,6 +24,8 @@ spring:
     username: ${DATA2FLOW_RABBITMQ_USERNAME:guest}
     password: ${DATA2FLOW_RABBITMQ_PASSWORD:guest}
     connection-timeout: 5s
+    # 다운링크 결과 이벤트(EVT-ACT-09)는 브로커 확인 뒤에 MQTT를 확인한다(SourceEventPublisher.publishConfirmed)
+    publisher-confirm-type: correlated
 server:
   port: 8080
   shutdown: graceful

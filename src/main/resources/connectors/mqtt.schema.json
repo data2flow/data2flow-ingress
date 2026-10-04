@@ -21,6 +21,7 @@
     "sessionExpirySec": {"type": "integer", "minimum": 0, "maximum": 604800, "default": 3600},
     "sharedGroup": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$", "description": "MQTT 5 공유 구독 그룹($share/{group}/…). 있으면 SCALABLE, 없으면 DUAL_ACTIVE(BR-DSC-25)"},
     "retainHandling": {"type": "string", "enum": ["SEND", "SEND_IF_SUBSCRIPTION_DOES_NOT_EXIST", "DO_NOT_SEND"], "default": "SEND"},
+    "downlinkAck": {"type": "boolean", "default": false, "description": "ChirpStack v4 업링크 토픽(application/+/device/+/event/up)마다 event/ack·event/txack도 구독해 다운링크 결과(EVT-ACT-09)를 낸다. 구독만 한다(ACT-03.03)"},
     "auth": {"type": "string", "enum": ["NONE", "USERPASS", "HEADER", "MTLS"], "default": "NONE"},
     "username": {"type": "string", "maxLength": 256},
     "headerName": {"type": "string", "default": "Authorization", "description": "HEADER 인증(ws·wss)의 HTTP 헤더 이름"},
@@ -30,7 +31,7 @@
   "x-ui": {
     "tabs": [
       {"name": "connection", "fields": ["url", "version", "clientIdBase", "keepaliveSec", "cleanStart", "sessionExpirySec"]},
-      {"name": "subscription", "fields": ["topics", "qos", "sharedGroup", "retainHandling"]},
+      {"name": "subscription", "fields": ["topics", "qos", "sharedGroup", "retainHandling", "downlinkAck"]},
       {"name": "security", "fields": ["auth", "username", "headerName", "headerScheme", "tlsInsecure"]}
     ]
   }

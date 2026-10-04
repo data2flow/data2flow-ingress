@@ -151,4 +151,30 @@ class MqttSourceSettingsTest {
         assertThat(parse("{\"url\":\"ssl://b\",\"topics\":[\"a\"],\"tls\":{\"verify\":false}}").tlsInsecure()).isTrue();
         assertThat(parse("{\"url\":\"ssl://b\",\"topics\":[\"a\"],\"tlsInsecure\":true}").tlsInsecure()).isTrue();
     }
+
+    @Test
+    @DisplayName("[ACT-03.03][TC-ACT-072] downlinkAck=true면 ChirpStack 업링크 토픽마다 event/ack·event/txack을 QoS 1 이상으로 더 구독한다(공유 구독 접두사 포함)")
+    void downlinkAckAddsChirpStackAckTopics() {
+        MqttSourceSettings s = parse("""
+                {"url":"tcp://localhost:1883","topics":[{"topic":"application/app-1/device/+/event/up","qos":0},
+                 {"topic":"devices/+/telemetry","qos":1}],"downlinkAck":true}""");
+        assertThat(s.topics()).containsExactly(
+                new MqttSourceSettings.Subscription("application/app-1/device/+/event/up", 0),
+                new MqttSourceSettings.Subscription("devices/+/telemetry", 1),
+                new MqttSourceSettings.Subscription("application/app-1/device/+/event/ack", 1),
+                new MqttSourceSettings.Subscription("application/app-1/device/+/event/txack", 1));
+
+        MqttSourceSettings shared = parse("""
+                {"url":"tcp://localhost:1883","sharedGroup":"g1","downlinkAck":true,
+                 "topics":[{"topic":"application/+/device/+/event/up","qos":1},{"topic":"application/+/device/+/event/ack","qos":2}]}""");
+        assertThat(shared.topics()).extracting(MqttSourceSettings.Subscription::topic).containsExactly(
+                "$share/g1/application/+/device/+/event/up", "$share/g1/application/+/device/+/event/ack",
+                "$share/g1/application/+/device/+/event/txack");
+
+        assertThat(parse("""
+                {"url":"tcp://localhost:1883","topics":["application/+/device/+/event/up"]}""").topics()).hasSize(1);
+        assertThatThrownBy(() -> parse("""
+                {"url":"tcp://localhost:1883","topics":["devices/+/telemetry"],"downlinkAck":true}"""))
+                .isInstanceOf(InvalidSettingsException.class).hasMessageContaining("downlinkAck");
+    }
 }

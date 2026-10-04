@@ -10,7 +10,7 @@
 
 ```
 외부 브로커(MQTT 3.1.1/5, tcp·ssl·ws·wss) ─구독(QoS 1, 영속 세션)→ MqttConnectorSession ─RawEnvelope v1→ RawStreamWriter ─confirm→ PUBACK
-        ▲ core-api API-DSC-50(소스 설정) + data2flow.config(설정 변경)        └→ data2flow.events: EVT-DSC-02(상태)·03(1분 통계)·09(카탈로그)
+        ▲ core-api API-DSC-50(소스 설정) + data2flow.config(설정 변경)        └→ data2flow.events: EVT-DSC-02(상태)·03(1분 통계)·09(카탈로그)·EVT-ACT-09(ChirpStack 다운링크 결과)
 ```
 
 | 기능 | 동작 | 스펙 |
@@ -25,6 +25,7 @@
 | 연결 테스트 | `POST /internal/ingress/sources/test`(API-DSC-51): DNS→TCP→TLS→AUTH→SUBSCRIBE, 미리보기 10건, 최대 30초, 조직당 동시 3개 | DSC-02.05·09.11 |
 | 실시간 보기 | `GET /internal/ingress/sources/{source-id}/live`(API-DSC-52, SSE): 초당 10건, 넘치면 `dropped` | DSC-02.06 |
 | 플랫폼 브로커 서명 | PLATFORM_BROKER 소스는 토픽 `devices/{deviceKey}/…`의 기기 서명 키(core API-DSC-72, 30초마다·자격 변경 시 1초 안에 다시 읽음)로 payload 서명을 검증해 `RawEnvelope.signatureStatus`(VERIFIED·UNSIGNED·INVALID)를 싣는다. 키 없음(승인 전·폐기) UNSIGNED, 키가 있는데 서명 없음·불일치 INVALID(지표 `data2flow_ingest_signature_rejected_total{reason=missing\|mismatch}`, 원본은 기록하고 pipeline이 `DEVICE_SIGNATURE_INVALID`로 거부). 아래 "플랫폼 브로커 서명 형식" | DSC-03.02·03.03·03.05, ADR-042 |
+| LoRaWAN 다운링크 결과 | MQTT 소스 `downlinkAck: true`면 ChirpStack 업링크 토픽마다 `event/ack`·`event/txack`도 구독(구독만). 이 두 토픽은 `data2flow.raw`가 아니라 EVT-ACT-09 `lorawan.downlink.ack`로 내고, RabbitMQ 발행 확인 뒤에만 PUBACK. 큐 항목 ID 없음·JSON 아님은 기록만 하고 확인(지표 `data2flow_ingress_downlink_acks_total{result}`) | ACT-03.03, ADR-054 |
 | 관측 | readiness = `data2flow.raw` 생산자 준비. 지표 `data2flow_ingress_*`, 소스별 상태 `/actuator/health`의 `sources` | OPS-01.02 |
 
 **구독 전용입니다.** 운영 코드에는 MQTT 발행 경로가 없고(`ArchitectureTest`가 HiveMQ 발행 API 호출을 막습니다), 송신 API(API-DSC-61)는 만들지 않았습니다(ACT-03.02 결정 대기).

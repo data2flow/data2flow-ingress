@@ -149,6 +149,9 @@ public record MqttSourceSettings(String version, String transport, String host, 
         if (subs.isEmpty()) {
             throw InvalidSettingsException.config("topics");
         }
+        if (bool(c, "downlinkAck", false)) {
+            subs = withDownlinkAck(subs);
+        }
         if (subs.size() > 20) {
             throw InvalidSettingsException.config("topics");
         }
@@ -224,6 +227,40 @@ public record MqttSourceSettings(String version, String transport, String host, 
                 cleanStart, expiry, shared, retainHandling, auth, username, password, headers, insecure,
                 reveal(secret(source, "CA_CERT")), reveal(secret(source, "CLIENT_CERT")),
                 reveal(secret(source, "CLIENT_KEY")));
+    }
+
+    /** ChirpStack v4 업링크 토픽 {@code application/{appId}/device/{devEui}/event/up}(와일드카드 포함) */
+    private static final java.util.regex.Pattern CHIRPSTACK_UP =
+            java.util.regex.Pattern.compile("^(application/[^/]+/device/[^/]+/event/)up$");
+
+    /**
+     * {@code downlinkAck=true}(ACT-03.03, ADR-054 남은 것 ①): ChirpStack v4 업링크 토픽마다 같은 애플리케이션·기기 범위의
+     * {@code event/ack}(확인형 다운링크의 기기 확인)와 {@code event/txack}(게이트웨이 송신)을 QoS 1 이상으로 더 구독한다. 구독만 하고 발행하지
+     * 않는다(CLAUDE.md §5). 받은 ack는 ingress가 원본 스트림이 아니라 EVT-ACT-09 {@code lorawan.downlink.ack}로 낸다.
+     *
+     * @throws InvalidSettingsException ChirpStack 업링크 토픽이 하나도 없으면({@code downlinkAck})
+     */
+    static List<Subscription> withDownlinkAck(List<Subscription> subs) {
+        List<Subscription> out = new ArrayList<>(subs);
+        boolean found = false;
+        for (Subscription s : subs) {
+            java.util.regex.Matcher m = CHIRPSTACK_UP.matcher(s.topic());
+            if (!m.matches()) {
+                continue;
+            }
+            found = true;
+            int qos = Math.max(1, s.qos());
+            for (String event : new String[]{"ack", "txack"}) {
+                Subscription extra = new Subscription(m.group(1) + event, qos);
+                if (out.stream().noneMatch(o -> o.topic().equals(extra.topic()))) {
+                    out.add(extra);
+                }
+            }
+        }
+        if (!found) {
+            throw InvalidSettingsException.config("downlinkAck");
+        }
+        return out;
     }
 
     /**
