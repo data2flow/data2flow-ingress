@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data2flow.java21.net/schemas/connectors/file-s3-1.0.0.json",
+  "title": "파일 가져오기(S3 호환)",
+  "description": "버킷 접두사 아래 파일을 키 순서로 읽어 한 줄을 원본 하나로 넘긴다(jsonl·csv). 기록(confirm) 뒤 파일 키·줄 번호 저장(CURSOR). 파일은 지우지 않는다. 비밀값 AWS_KEYS(접근 키:비밀 키) 또는 ACCESS_KEY_ID·SECRET_ACCESS_KEY.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["bucket"],
+  "properties": {
+    "endpoint": {"type": "string", "description": "S3 호환 저장소 주소(MinIO 등). 비우면 AWS S3"},
+    "region": {"type": "string", "default": "us-east-1"},
+    "bucket": {"type": "string"},
+    "prefix": {"type": "string", "default": ""},
+    "pathStyle": {"type": "boolean", "description": "경로 방식 주소(MinIO). endpoint가 있으면 기본 true"},
+    "format": {"type": "string", "enum": ["jsonl", "csv"], "default": "jsonl"},
+    "batchSize": {"type": "integer", "minimum": 1, "maximum": 10000, "default": 500},
+    "intervalSec": {"type": "integer", "minimum": 10, "maximum": 86400, "default": 300},
+    "topic": {"type": "string"}
+  },
+  "x-ui": {"tabs": [{"name": "connection", "fields": ["endpoint", "region", "bucket", "prefix", "pathStyle"]}, {"name": "file", "fields": ["format", "batchSize", "intervalSec", "topic"]}]}
+}

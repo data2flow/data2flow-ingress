@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data2flow.java21.net/schemas/connectors/onem2m-1.0.0.json",
+  "title": "oneM2M (Mobius)",
+  "description": "HTTP 바인딩으로 컨테이너의 새 contentInstance를 stateTag 순서로 폴링해 con 하나를 원본 하나로 넘긴다. 기록(confirm) 뒤 마지막 st 저장(CURSOR). 리더 1대만 실행(SINGLETON). 비밀값 TOKEN(선택).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["cseUrl", "containers"],
+  "properties": {
+    "cseUrl": {"type": "string", "pattern": "^https?://\\S+$", "description": "CSEBase 주소. 예: http://mobius.example.com:7579/Mobius"},
+    "origin": {"type": "string", "default": "SData2flow", "description": "X-M2M-Origin(조회 권한이 있는 AE·CSE ID)"},
+    "containers": {"type": "array", "minItems": 1, "maxItems": 50, "items": {"type": "string"}, "description": "CSEBase 아래 경로. 예: ae-room101/co2"},
+    "intervalSec": {"type": "integer", "minimum": 10, "maximum": 86400, "default": 60},
+    "batchSize": {"type": "integer", "minimum": 1, "maximum": 1000, "default": 100}
+  },
+  "x-ui": {"tabs": [{"name": "connection", "fields": ["cseUrl", "origin", "containers", "intervalSec", "batchSize"]}]}
+}

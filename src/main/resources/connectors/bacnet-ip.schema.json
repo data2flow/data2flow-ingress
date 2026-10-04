@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://data2flow.java21.net/schemas/connectors/bacnet-ip-1.0.0.json",
+  "title": "BACnet/IP",
+  "description": "ReadProperty(Present_Value) 폴링 또는 추세 기록 ReadRange(bySequenceNumber, 무손실 CURSOR). BACnet4J(GPL) 대신 필요한 서비스만 직접 구현(ADR-018). 리더 1대만 실행(SINGLETON). 쓰기·COV는 없다.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["host", "deviceInstance"],
+  "properties": {
+    "host": {"type": "string"},
+    "port": {"type": "integer", "minimum": 1, "maximum": 65535, "default": 47808},
+    "deviceInstance": {"type": "integer", "minimum": 0, "maximum": 4194302},
+    "mode": {"type": "string", "enum": ["present-value", "trend-log"], "default": "present-value"},
+    "intervalSec": {"type": "integer", "minimum": 10, "maximum": 86400, "default": 60},
+    "topic": {"type": "string"},
+    "trendLogInstance": {"type": "integer", "minimum": 0, "default": 1},
+    "batchSize": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50},
+    "points": {"type": "array", "maxItems": 200, "items": {"type": "object", "additionalProperties": false, "required": ["name", "objectType", "instance"], "properties": {
+      "name": {"type": "string", "pattern": "^[A-Za-z0-9_.-]{1,64}$"},
+      "objectType": {"type": "string", "enum": ["analog-input", "analog-output", "analog-value", "binary-input", "binary-output", "binary-value", "multi-state-input", "multi-state-output", "multi-state-value"]},
+      "instance": {"type": "integer", "minimum": 0, "maximum": 4194302}}}}
+  },
+  "x-ui": {"tabs": [{"name": "connection", "fields": ["host", "port", "deviceInstance", "intervalSec", "topic"]}, {"name": "points", "fields": ["mode", "points", "trendLogInstance", "batchSize"]}]}
+}
