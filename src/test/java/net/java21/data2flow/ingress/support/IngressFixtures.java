@@ -44,7 +44,8 @@ public final class IngressFixtures {
                 new IngressProperties.Db(null, null, null, "validate", 4),
                 new IngressProperties.Lease(Duration.ofSeconds(30), Duration.ofSeconds(10)),
                 new IngressProperties.Polling(Duration.ofSeconds(10)),
-                new IngressProperties.Webhook(Duration.ofSeconds(30)));
+                new IngressProperties.Webhook(Duration.ofSeconds(30)),
+                new IngressProperties.Payload(1024 * 1024, Duration.ofSeconds(2)));
     }
 
     public static SourceDefinition source(long id, String lifecycle, String url, String topic) {

@@ -34,6 +34,10 @@
         <milo.version>1.1.7</milo.version>
         <j2mod.version>3.4.0</j2mod.version>
         <awssdk.version>2.35.11</awssdk.version>
+        <!-- payload 형식(DSC-09.07): protobuf-java BSD-3, Apache Avro Apache-2.0, msgpack-core Apache-2.0, Jackson CBOR Apache-2.0 -->
+        <protobuf-java.version>4.35.1</protobuf-java.version>
+        <avro.version>1.12.2</avro.version>
+        <msgpack.version>0.9.12</msgpack.version>
     </properties>
 
     <!-- data2flow-contracts·data2flow-bom은 GitHub Packages에 있다. 읽기에도 토큰이 필요하다(README 참고) -->
@@ -169,6 +173,25 @@
             <version>${awssdk.version}</version>
         </dependency>
         <!-- 폴링 커서·리더 리스(data2flow_ingress 스키마, ADR-049). PostgreSQL JDBC BSD-2-Clause, HikariCP·Flyway Apache-2.0 -->
+        <dependency>
+            <groupId>com.google.protobuf</groupId>
+            <artifactId>protobuf-java</artifactId>
+            <version>${protobuf-java.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.avro</groupId>
+            <artifactId>avro</artifactId>
+            <version>${avro.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.msgpack</groupId>
+            <artifactId>msgpack-core</artifactId>
+            <version>${msgpack.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>tools.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-cbor</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework</groupId>
             <artifactId>spring-jdbc</artifactId>

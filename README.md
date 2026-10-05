@@ -2,7 +2,7 @@
 
 외부 MQTT 브로커를 **구독만** 해서 받은 원본을 RabbitMQ Super Stream `data2flow.raw`에 기록하고, **publisher confirm을 받은 뒤에만** 브로커에 확인(PUBACK)하는 수집 서비스입니다. 수집 경로를 만들거나 운영하는 백엔드 개발자가 읽습니다. 다 읽으면 로컬에서 실행하고, 설정 키와 비밀값을 넣고, 무손실 시험을 돌릴 수 있습니다.
 
-- 관련 스펙: ING-01.01·01.03, DSC-01.02·01.03·01.04·01.05·02.01~02.06·05.01·07.01·07.03·07.04·09.01~09.11·09.14, NFR-01.01~01.04·02.02~02.04·02.09, OPS-01.02·02.03 (정본은 비공개 저장소 `data2flow-docs`)
+- 관련 스펙: ING-01.01·01.03, DSC-01.02·01.03·01.04·01.05·02.01~02.06·05.01·07.01·07.03·07.04·09.01~09.11·09.14(09.07·09.08 포함), NFR-01.01~01.04·02.02~02.04·02.09, OPS-01.02·02.03 (정본은 비공개 저장소 `data2flow-docs`)
 - 패키지: `net.java21.data2flow.ingress` · Spring Boot 4.1.1 · Java 21 · Maven Wrapper
 - 포트: API 8080(내부 전용), actuator 8081(프로브·지표·소스별 연결 상태)
 
@@ -26,6 +26,7 @@
 | 실시간 보기 | `GET /internal/ingress/sources/{source-id}/live`(API-DSC-52, SSE): 초당 10건, 넘치면 `dropped` | DSC-02.06 |
 | 플랫폼 브로커 서명 | PLATFORM_BROKER 소스는 토픽 `devices/{deviceKey}/…`의 기기 서명 키(core API-DSC-72, 30초마다·자격 변경 시 1초 안에 다시 읽음)로 payload 서명을 검증해 `RawEnvelope.signatureStatus`(VERIFIED·UNSIGNED·INVALID)를 싣는다. 키 없음(승인 전·폐기) UNSIGNED, 키가 있는데 서명 없음·불일치 INVALID(지표 `data2flow_ingest_signature_rejected_total{reason=missing\|mismatch}`, 원본은 기록하고 pipeline이 `DEVICE_SIGNATURE_INVALID`로 거부). 아래 "플랫폼 브로커 서명 형식" | DSC-03.02·03.03·03.05, ADR-042 |
 | LoRaWAN 다운링크 결과 | MQTT 소스 `downlinkAck: true`면 ChirpStack 업링크 토픽마다 `event/ack`·`event/txack`도 구독(구독만). 이 두 토픽은 `data2flow.raw`가 아니라 EVT-ACT-09 `lorawan.downlink.ack`로 내고, RabbitMQ 발행 확인 뒤에만 PUBACK. 큐 항목 ID 없음·JSON 아님은 기록만 하고 확인(지표 `data2flow_ingress_downlink_acks_total{result}`) | ACT-03.03, ADR-054 |
+| payload 형식·토픽 템플릿 | 기록 직전에 소스 `config.payload`(`format`·`compression`·`schemaRef`·`messageType`·`registryUrl`·`csv`)와 `config.topicTemplate`을 적용한다. CBOR·MessagePack·Protobuf(core API-DSC-81 업로드 스키마)·Avro(파일·Confluent 호환 레지스트리·.avsc)·CSV·Sparkplug B → 구조화 JSON(`payload`), 받은 바이트는 `originalPayload`, 압축(gzip·deflate) 해제. 템플릿 값은 `topicAttributes`(externalId·metric·spaceHint). 불일치 `UNMATCHED_TOPIC`·풀 수 없음 `DECODE_ERROR`는 원본 그대로 기록·확인, 스키마 저장소 접속 실패만 기록 실패(재전송). 내부 API: API-DSC-82 스키마 검사, API-DSC-83 템플릿 미리보기. 통계 `converted`·`decodeError`·`unmatchedTopic` | DSC-09.07·09.08, ADR-056 |
 | 관측 | readiness = `data2flow.raw` 생산자 준비. 지표 `data2flow_ingress_*`, 소스별 상태 `/actuator/health`의 `sources` | OPS-01.02 |
 
 **구독 전용입니다.** 운영 코드에는 MQTT 발행 경로가 없고(`ArchitectureTest`가 HiveMQ 발행 API 호출을 막습니다), 송신 API(API-DSC-61)는 만들지 않았습니다(ACT-03.02 결정 대기).
@@ -103,6 +104,7 @@
 | `data2flow.ingress.lease.ttl`·`renew-every` | – | `30s`·`10s` | SINGLETON 리더 리스(BR-DSC-26) |
 | `data2flow.ingress.polling.min-interval` | – | `10s` | 폴링 주기 하한(DSC-09.09) |
 | `data2flow.ingress.webhook.write-timeout` | – | `30s` | Webhook 기록 confirm 대기, 넘으면 503 |
+| `data2flow.ingress.payload.max-decompressed-bytes`·`schema-timeout` | – | `1048576`·`5s` | 압축 해제 한도(넘으면 DECODE_ERROR), 업로드 스키마(core)·Avro 레지스트리 조회 제한 시간 |
 | `management.tracing.sampling.probability` | `DATA2FLOW_TRACING_SAMPLING` | `0.1` | 추적 표본 비율(OTLP 내보내기는 주소를 정한 환경만) |
 
 ### 소스 설정(core-api가 주는 `config`)
@@ -130,6 +132,7 @@ payload = "v1." + hex(HMAC-SHA256(서명 키 UTF-8, body)) + "." + body      # h
 | `MqttManualAckIT` | TC-ING-016: Stream이 끊긴 동안 PUBACK 0, 복구 후 재전송으로 모두 기록 |
 | `PlatformBrokerSignatureIT`, `PayloadSignatureVerifierTest`, `SigningKeyCacheTest` | TC-DSC-114·322: 승인 전 UNSIGNED, 자격 변경 후 서명 맞음 VERIFIED·서명 없음·다른 기기 키 INVALID, 폐기 키 제거, 60초 이하 주기 |
 | `*ConnectorContractIT`(M5 커넥터 19종), `SingletonLeaderLeaseIT`, `IngressConnectorCatalogIT`, `ConnectorLicenseTest` | 커넥터 계약 키트(TC-DSC-241~251·324~327), 리스 넘겨받기·fencing(TC-DSC-295), 카탈로그·Webhook·DB 커서 앱 시험(TC-DSC-319), 라이선스 0건(TC-DSC-318) |
+| `PayloadCodecGoldenTest`, `PayloadCodecTest`, `SparkplugBCodecTest`, `ProtoSchemaParserTest`, `TopicTemplateTest`, `PayloadTransformerTest`, `PayloadFormatIT` | DSC-09.07·09.08: 형식별 골든 입력 → 같은 값(TC-DSC-284), .proto 해석·거부 20종, 템플릿 20케이스(TC-DSC-289), 불일치·풀 수 없음·스키마 일시 실패(TC-DSC-280·285), 앱 전체에서 원본 스트림 기록과 API-DSC-82·83 |
 | `ReconnectBackoffIT`, `ConnectorScalingIT`, `StagedConnectionTestIT`, `IngressCollectionIT` | 재연결 1·2·4·8초, 공유 구독 1만 건 분배·이중 수신, 단계별 연결 테스트, 수집 경로 전체 |
 
 ## 5. 작업 규칙

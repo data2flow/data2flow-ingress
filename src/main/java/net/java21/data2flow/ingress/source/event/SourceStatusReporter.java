@@ -118,6 +118,11 @@ public class SourceStatusReporter implements SourceSupervisor.StatusListener, So
                     counters.put(name, Math.max(0, total - (prev == null ? 0 : prev)));
                 });
             }
+            // payload 변환 결과(DSC-09.07·09.08, BR-DSC-28): converted·decodeError·unmatchedTopic의 1분 차이
+            r.counters().payloadCounters().forEach((name, total) -> {
+                Long prev = lastExtra.put(id + ":payload:" + name, total);
+                counters.put(name, Math.max(0, total - (prev == null ? 0 : prev)));
+            });
             SourceStatsReported payload = new SourceStatsReported(id, minute, SourceStatsReported.Producer.INGRESS, counters);
             publisher.execute(() -> events.publish(DomainEvent.of(EventType.SOURCE_STATS_1M,
                     r.definition().organizationId(), payload, null, clock)));

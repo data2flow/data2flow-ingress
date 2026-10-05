@@ -12,7 +12,9 @@ public enum IngressErrorCode implements ErrorCode {
     /** 커넥터가 지원하지 않는 인증 방식 */
     SOURCE_AUTH_UNSUPPORTED(400),
     /** 인증 방식에 필요한 비밀값 없음 */
-    SOURCE_SECRET_REQUIRED(400);
+    SOURCE_SECRET_REQUIRED(400),
+    /** 올린 payload 스키마(.proto·.desc·.avsc)를 해석할 수 없음(API-DSC-82, DSC-09.07) */
+    SOURCE_SCHEMA_INVALID(400);
 
     private final int httpStatus;
 

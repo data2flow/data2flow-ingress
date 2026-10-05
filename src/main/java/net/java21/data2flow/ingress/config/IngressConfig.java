@@ -159,7 +159,8 @@ public class IngressConfig {
                                       SourceStatusReporter reporter, LiveTap liveTap, MeterRegistry meters, Clock clock,
                                       PayloadSignatureVerifier verifier,
                                       net.java21.data2flow.ingress.lease.service.LeaseManager leaseManager,
-                                      ChirpStackAckRouter downlinkAcks) {
+                                      ChirpStackAckRouter downlinkAcks,
+                                      net.java21.data2flow.ingress.payload.service.PayloadTransformerFactory payloadTransformers) {
         SourceSupervisor.ReceivedListener received = (RawEnvelope e) -> {
             liveTap.onReceived(e);
             reporter.onReceived(e);
@@ -168,8 +169,29 @@ public class IngressConfig {
                 verifier);
         supervisor.useLeaseManager(leaseManager);
         supervisor.useDownlinkAckRouter(downlinkAcks);
+        supervisor.usePayloadTransformers(payloadTransformers);
         reporter.attach(supervisor);
         return supervisor;
+    }
+
+    // ---- payload 형식 변환·토픽 템플릿(DSC-09.07·09.08) ----
+
+    @Bean
+    net.java21.data2flow.ingress.payload.service.PayloadTransformerFactory payloadTransformerFactory(
+            RestClient.Builder builder, ObjectProvider<JsonMapper> json, IngressProperties properties) {
+        JsonMapper mapper = json.getIfAvailable(MessageCodec::newMapper);
+        var schemas = new net.java21.data2flow.ingress.payload.schema.PayloadSchemaClient(builder.clone()
+                .requestFactory(net.java21.data2flow.ingress.payload.schema.PayloadSchemaClient.requestFactory(
+                        properties.payload().schemaTimeout())), mapper, properties.coreUri());
+        var registry = new net.java21.data2flow.ingress.payload.schema.AvroRegistryClient(properties.payload().schemaTimeout(),
+                mapper);
+        return new net.java21.data2flow.ingress.payload.service.PayloadTransformerFactory(schemas, registry,
+                properties.payload().maxDecompressedBytes(), MessageCodec.newMapper());
+    }
+
+    @Bean
+    net.java21.data2flow.ingress.payload.service.PayloadSchemaInspector payloadSchemaInspector() {
+        return new net.java21.data2flow.ingress.payload.service.PayloadSchemaInspector();
     }
 
     @Bean

@@ -22,6 +22,7 @@ public final class CoreStub implements AutoCloseable {
     private final AtomicReference<String> lastCaller = new AtomicReference<>();
     private final AtomicReference<String> signingKeys = new AtomicReference<>("[]");
     private final AtomicInteger signingKeyRequests = new AtomicInteger();
+    private final java.util.Map<String, String> payloadSchemas = new java.util.concurrent.ConcurrentHashMap<>();
 
     public CoreStub() {
         try {
@@ -55,7 +56,27 @@ public final class CoreStub implements AutoCloseable {
                 out.write(bytes);
             }
         });
+        // API-DSC-81: 업로드 스키마(DSC-09.07). 등록하지 않은 참조는 404
+        server.createContext("/internal/core/payload-schemas/", exchange -> {
+            String path = exchange.getRequestURI().getPath();
+            String body = payloadSchemas.get(path.substring(path.lastIndexOf('/') + 1));
+            byte[] bytes = (body == null ? "{\"header\":{\"isSuccessful\":false,\"resultCode\":\"RESOURCE_NOT_FOUND\"}}"
+                    : "{\"header\":{\"isSuccessful\":true,\"resultCode\":\"SUCCESS\"},\"response\":" + body + "}")
+                    .getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(body == null ? 404 : 200, bytes.length);
+            try (OutputStream out = exchange.getResponseBody()) {
+                out.write(bytes);
+            }
+        });
         server.start();
+    }
+
+    /** API-DSC-81 응답에 업로드 스키마를 더한다(DSC-09.07) */
+    public void payloadSchema(String schemaRef, long organizationId, String format, String fileName, byte[] content) {
+        payloadSchemas.put(schemaRef, ("{\"schemaRef\":\"%s\",\"organizationId\":%d,\"sourceId\":1,\"format\":\"%s\","
+                + "\"fileName\":\"%s\",\"content\":\"%s\",\"messageTypes\":[]}").formatted(schemaRef, organizationId, format,
+                fileName, java.util.Base64.getEncoder().encodeToString(content)));
     }
 
     /** API-DSC-72 응답의 keys 배열 JSON을 바꾼다 */

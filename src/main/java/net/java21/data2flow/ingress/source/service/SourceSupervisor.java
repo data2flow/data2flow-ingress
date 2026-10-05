@@ -10,6 +10,9 @@ import net.java21.data2flow.contracts.connector.ConnectorState;
 import net.java21.data2flow.contracts.connector.ScalingMode;
 import net.java21.data2flow.contracts.connector.ConnectorStatus;
 import net.java21.data2flow.contracts.connector.RawSink;
+import net.java21.data2flow.ingress.payload.codec.SchemaUnavailableException;
+import net.java21.data2flow.ingress.payload.service.PayloadTransformer;
+import net.java21.data2flow.ingress.payload.service.PayloadTransformerFactory;
 import net.java21.data2flow.contracts.connector.SourceConfig;
 import net.java21.data2flow.contracts.connector.SourceConnector;
 import net.java21.data2flow.contracts.message.RawEnvelope;
@@ -83,6 +86,15 @@ public class SourceSupervisor implements SmartLifecycle {
     public static final class SourceCounters {
         final AtomicLong received = new AtomicLong();
         final AtomicLong bytes = new AtomicLong();
+        /** payload 변환 결과(DSC-09.07·09.08): converted·decodeError·unmatchedTopic → 누적 수 */
+        final Map<String, AtomicLong> payload = new java.util.concurrent.ConcurrentHashMap<>();
+
+        /** payload 변환 결과 누적 수(이름 → 값). EVT-DSC-03 {@code counters}에 1분 차이로 싣는다 */
+        public Map<String, Long> payloadCounters() {
+            Map<String, Long> copy = new java.util.TreeMap<>();
+            payload.forEach((k, v) -> copy.put(k, v.get()));
+            return copy;
+        }
 
         public long received() {
             return received.get();
@@ -106,6 +118,7 @@ public class SourceSupervisor implements SmartLifecycle {
     private final Map<Long, SourceDefinition> standby = new java.util.concurrent.ConcurrentHashMap<>();
     private LeaseManager leases = new LocalLeaseManager();
     private volatile net.java21.data2flow.ingress.downlink.service.ChirpStackAckRouter downlinkAcks;
+    private volatile PayloadTransformerFactory payloadTransformers;
     private java.util.concurrent.ScheduledExecutorService leaseTimer;
     private final Set<Long> warnedSkipped = new HashSet<>();
     private volatile boolean started;
@@ -143,6 +156,11 @@ public class SourceSupervisor implements SmartLifecycle {
     /** ChirpStack 다운링크 결과(event/ack·txack)를 원본 스트림 대신 EVT-ACT-09로 낸다(ACT-03.03). 없으면 모두 원본으로 기록한다 */
     public void useDownlinkAckRouter(net.java21.data2flow.ingress.downlink.service.ChirpStackAckRouter router) {
         this.downlinkAcks = router;
+    }
+
+    /** payload 형식 변환·토픽 템플릿(DSC-09.07·09.08). 없으면 받은 그대로 기록한다 */
+    public void usePayloadTransformers(PayloadTransformerFactory factory) {
+        this.payloadTransformers = factory;
     }
 
     /** core 설정을 반영한다. 같은 설정이 다시 와도 아무것도 하지 않는다(멱등) */
@@ -248,6 +266,17 @@ public class SourceSupervisor implements SmartLifecycle {
             }
             standby.remove(d.id());
         }
+        PayloadTransformer transformer;
+        try {
+            PayloadTransformerFactory factory = payloadTransformers;
+            transformer = factory == null ? null : factory.create(d.organizationId(), key, d.config());
+        } catch (IllegalArgumentException e) {
+            releaseQuietly(lease);
+            log.warn("소스 {} payload 설정 오류: {}", d.id(), e.getMessage());
+            statusListener.onStatus(d, ConnectorStatus.error(ConnectionErrorKind.PROTOCOL,
+                    "SOURCE_CONFIG_INVALID: " + e.getMessage()));
+            return;
+        }
         SourceConfig config = new SourceConfig(d.organizationId(), d.id(), d.type(), key, d.config(), d.secrets(),
                 clientId(d));
         Counter receivedMeter = Counter.builder("data2flow.ingress.messages.received")
@@ -259,9 +288,21 @@ public class SourceSupervisor implements SmartLifecycle {
                 // 텔레메트리가 아니다: 이벤트 발행 confirm 뒤에 확인한다(원본 스트림·수신 통계에는 넣지 않음)
                 return acks.route(received);
             }
-            RawEnvelope envelope = envelopeFilter.apply(received);
+            RawEnvelope filtered = envelopeFilter.apply(received);
+            PayloadTransformer.Outcome outcome;
+            try {
+                outcome = transformer == null ? new PayloadTransformer.Outcome(filtered, null) : transformer.apply(filtered);
+            } catch (SchemaUnavailableException e) {
+                // 스키마를 지금 못 가져옴: 기록하지 않고 실패로 끝내 상대가 다시 보내게 한다(무손실, DSC-09.03)
+                log.warn("소스 {} 스키마 조회 실패, 확인하지 않습니다: {}", d.id(), e.getMessage());
+                return java.util.concurrent.CompletableFuture.failedFuture(e);
+            }
+            RawEnvelope envelope = outcome.envelope();
             CompletionStage<Void> write = writer.write(envelope);
             return write.thenRun(() -> {
+                if (outcome.counter() != null) {
+                    counters.payload.computeIfAbsent(outcome.counter(), k -> new AtomicLong()).incrementAndGet();
+                }
                 counters.received.incrementAndGet();
                 counters.bytes.addAndGet(envelope.payload().length);
                 receivedMeter.increment();

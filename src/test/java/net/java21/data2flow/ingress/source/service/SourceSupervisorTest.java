@@ -200,6 +200,65 @@ class SourceSupervisorTest {
         assertThat(r.counters().bytes()).isEqualTo(7);
     }
 
+    static SourceDefinition withConfig(SourceDefinition d, String extraJson) {
+        tools.jackson.databind.node.ObjectNode c = (tools.jackson.databind.node.ObjectNode) d.config().deepCopy();
+        JSON.readTree(extraJson).properties().forEach(e -> c.set(e.getKey(), e.getValue()));
+        return new SourceDefinition(d.id(), d.organizationId(), d.type(), d.lifecycle(), d.connectorKey(), c, d.secrets(),
+                d.clientIdBase());
+    }
+
+    void usePayload() {
+        supervisor.usePayloadTransformers(new net.java21.data2flow.ingress.payload.service.PayloadTransformerFactory(
+                new net.java21.data2flow.ingress.payload.schema.PayloadSchemaClient(org.springframework.web.client.RestClient
+                        .builder().requestFactory(net.java21.data2flow.ingress.payload.schema.PayloadSchemaClient
+                                .requestFactory(java.time.Duration.ofMillis(300))), JSON, "http://127.0.0.1:1"),
+                new net.java21.data2flow.ingress.payload.schema.AvroRegistryClient(java.time.Duration.ofMillis(300), JSON),
+                1024 * 1024, JSON));
+    }
+
+    @Test
+    @DisplayName("DSC-09.07·09.08 TC-DSC-280·285 기록 직전에 변환·템플릿을 적용하고, 기록 뒤에 소스 통계(converted·unmatchedTopic)를 올린다")
+    void payloadTransformAppliedBeforeWrite() {
+        usePayload();
+        supervisor.apply(snapshot("1", withConfig(source(3, "ACTIVE", "tcp://broker", "site/#"),
+                "{\"payload\":{\"format\":\"cbor\"},\"topicTemplate\":\"site/{site}/{deviceId}\"}")));
+        FakeConnector.Session s = connector.sessions.getFirst();
+        byte[] cbor = net.java21.data2flow.ingress.payload.PayloadTestData.cbor();
+        s.sink.write(s.ctx.envelope(s.config, "site/a/em-1", cbor)).toCompletableFuture().join();
+        s.sink.write(s.ctx.envelope(s.config, "other", cbor)).toCompletableFuture().join();
+        assertThat(written.get(0).payloadFormat()).isEqualTo("CBOR");
+        assertThat(written.get(0).originalPayload()).isEqualTo(cbor);
+        assertThat(written.get(0).topicAttributes()).containsEntry("externalId", "em-1");
+        assertThat(written.get(1).ingressStatus()).isEqualTo("UNMATCHED_TOPIC");
+        assertThat(received).hasSize(2);
+        SourceSupervisor.Running r = new ArrayList<>(supervisor.running()).getFirst();
+        assertThat(r.counters().payloadCounters()).containsEntry("converted", 1L).containsEntry("unmatchedTopic", 1L);
+    }
+
+    @Test
+    @DisplayName("DSC-09.03 스키마를 가져올 수 없으면 기록하지 않고 실패로 끝낸다(확인하지 않음 → 상대 재전송)")
+    void schemaUnavailableFailsWrite() {
+        usePayload();
+        supervisor.apply(snapshot("1", withConfig(source(3, "ACTIVE", "tcp://broker", "a"),
+                "{\"payload\":{\"format\":\"protobuf\",\"schemaRef\":\"9\"}}")));
+        FakeConnector.Session s = connector.sessions.getFirst();
+        var result = s.sink.write(s.ctx.envelope(s.config, "a", new byte[]{1})).toCompletableFuture();
+        assertThat(result).isCompletedExceptionally();
+        assertThat(written).isEmpty();
+        assertThat(new ArrayList<>(supervisor.running()).getFirst().counters().received()).isZero();
+    }
+
+    @Test
+    @DisplayName("DSC-09.07 payload 설정 오류(모르는 형식·잘못된 템플릿)는 세션을 열지 않고 SOURCE_CONFIG_INVALID(필드 이름)")
+    void invalidPayloadSettings() {
+        usePayload();
+        supervisor.apply(snapshot("1", withConfig(source(3, "ACTIVE", "tcp://broker", "a"),
+                "{\"payload\":{\"format\":\"xml\"}}")));
+        assertThat(connector.sessions).isEmpty();
+        assertThat(statuses).anyMatch(st -> st.state() == ConnectorState.ERROR
+                && st.errorMessage().contains("SOURCE_CONFIG_INVALID: payload.format"));
+    }
+
     @Test
     @DisplayName("TC-ING-021 종료하면 모든 세션을 drain하고 그 뒤 설정은 반영하지 않는다")
     void stopDrainsAll() {

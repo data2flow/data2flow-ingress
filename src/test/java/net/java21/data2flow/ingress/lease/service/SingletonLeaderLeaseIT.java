@@ -163,7 +163,7 @@ class SingletonLeaderLeaseIT {
                 p.reportInterval(), p.statsInterval(), Duration.ofSeconds(2), p.autoStart(), p.sourceFilter(), p.credentials(),
                 p.mqtt(), p.stream(), p.connectionTest(), p.live(), p.platformBroker(), p.signing(), p.db(),
                 new IngressProperties.Lease(Duration.ofSeconds(2), Duration.ofMillis(500)),
-                new IngressProperties.Polling(Duration.ofMillis(100)), p.webhook());
+                new IngressProperties.Polling(Duration.ofMillis(100)), p.webhook(), p.payload());
         HttpPollingConnector http = new HttpPollingConnector(PollingOptions.defaults().withMinPollInterval(Duration.ofMillis(100)),
                 Clock.systemUTC());
         SourceSupervisor s = new SourceSupervisor(props, new ConnectorRegistry(List.of(http)), e -> {

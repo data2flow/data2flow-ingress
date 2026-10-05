@@ -34,6 +34,7 @@ import java.util.regex.Pattern;
  * @param lease          SINGLETON 커넥터 리더 리스(BR-DSC-26)
  * @param polling        폴링 커넥터 공통(DSC-09.09)
  * @param webhook        Webhook 수신(DSC-01.03)
+ * @param payload        payload 형식 변환·스키마 조회(DSC-09.07)
  */
 @ConfigurationProperties("data2flow.ingress")
 public record IngressProperties(
@@ -58,7 +59,8 @@ public record IngressProperties(
         @DefaultValue Db db,
         @DefaultValue Lease lease,
         @DefaultValue Polling polling,
-        @DefaultValue Webhook webhook) {
+        @DefaultValue Webhook webhook,
+        @DefaultValue Payload payload) {
 
     private static final Pattern TRAILING_ORDINAL = Pattern.compile(".*-(\\d+)$");
 
@@ -221,5 +223,13 @@ public record IngressProperties(
 
     /** @param writeTimeout 스트림 기록 confirm을 기다리는 시간. 넘으면 503(상대가 다시 보냄) */
     public record Webhook(@DefaultValue("30s") Duration writeTimeout) {
+    }
+
+    /**
+     * @param maxDecompressedBytes 압축을 푼 payload 한도(압축 폭탄 방지, 1MiB). 넘으면 DECODE_ERROR
+     * @param schemaTimeout        업로드 스키마(core API-DSC-81)·Avro 레지스트리 조회 제한 시간
+     */
+    public record Payload(@DefaultValue("1048576") int maxDecompressedBytes,
+                          @DefaultValue("5s") Duration schemaTimeout) {
     }
 }

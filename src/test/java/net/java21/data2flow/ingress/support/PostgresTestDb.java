@@ -32,7 +32,7 @@ public final class PostgresTestDb {
                 p.coreUri(), p.resyncInterval(), p.reportInterval(), p.statsInterval(), p.drainTimeout(), p.autoStart(),
                 p.sourceFilter(), p.credentials(), p.mqtt(), p.stream(), p.connectionTest(), p.live(), p.platformBroker(),
                 p.signing(), new IngressProperties.Db(pg.getJdbcUrl(), pg.getUsername(), pg.getPassword(), "migrate", 4),
-                p.lease(), p.polling(), p.webhook());
+                p.lease(), p.polling(), p.webhook(), p.payload());
         return new PersistenceConfigAccess().dataSource(withDb);
     }
 

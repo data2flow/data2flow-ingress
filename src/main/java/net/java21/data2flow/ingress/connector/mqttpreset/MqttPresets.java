@@ -45,7 +45,7 @@ public final class MqttPresets {
 
     /**
      * Sparkplug B(Eclipse Sparkplug 3.0): {@code spBv1.0/{groupId}/#}를 구독하고 NBIRTH·NDATA·NDEATH·DBIRTH·DDATA·DDEATH만 기록한다.
-     * STATE(호스트 앱 상태)와 NCMD·DCMD(명령)는 기록하지 않는다. payload(Protobuf)는 그대로 넘기고 pipeline이 해석한다(형식 SPARKPLUG_B).
+     * STATE(호스트 앱 상태)와 NCMD·DCMD(명령)는 기록하지 않는다. payload(Protobuf)는 기록 직전에 SparkplugBCodec이 JSON으로 바꾼다(형식 SPARKPLUG_B 기본, DSC-09.07).
      * 호스트 앱으로 STATE를 발행하거나 재탄생(Rebirth) 명령을 보내지 않는다(구독 전용, CLAUDE.md §5).
      */
     public static MqttPresetConnector sparkplug(MqttSourceConnector mqtt) {
