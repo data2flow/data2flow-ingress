@@ -32,7 +32,7 @@ public class AvroRegistryClient {
     private final Map<String, Schema> cache = new ConcurrentHashMap<>();
 
     public AvroRegistryClient(Duration timeout, JsonMapper json) {
-        this.http = HttpClient.newBuilder().connectTimeout(timeout).followRedirects(HttpClient.Redirect.NEVER).build();
+        this.http = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).connectTimeout(timeout).followRedirects(HttpClient.Redirect.NEVER).build();
         this.timeout = timeout;
         this.json = json;
     }

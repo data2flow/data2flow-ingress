@@ -60,7 +60,7 @@ public class PubSubConnector implements SourceConnector {
     public PubSubConnector(PollingOptions options, Clock clock) {
         this.options = options;
         this.clock = clock;
-        this.http = HttpClient.newBuilder().connectTimeout(options.connectTimeout()).build();
+        this.http = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).connectTimeout(options.connectTimeout()).build();
     }
 
     @Override

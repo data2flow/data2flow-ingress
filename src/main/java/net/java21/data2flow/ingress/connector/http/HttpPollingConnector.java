@@ -115,7 +115,7 @@ public class HttpPollingConnector implements SourceConnector {
     }
 
     static HttpClient client(SourceConfig config) {
-        HttpClient.Builder b = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10))
+        HttpClient.Builder b = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).connectTimeout(Duration.ofSeconds(10))
                 .followRedirects(HttpClient.Redirect.NORMAL);
         try {
             if ("https".equalsIgnoreCase(URI.create(Cfg.of(config).required("url")).getScheme())) {

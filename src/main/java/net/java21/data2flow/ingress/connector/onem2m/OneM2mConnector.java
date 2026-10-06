@@ -74,7 +74,7 @@ public class OneM2mConnector implements SourceConnector {
     @Override
     public ConnectionTestResult test(SourceConfig config) {
         Settings s = Settings.from(config, options);
-        HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
+        HttpClient http = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).connectTimeout(Duration.ofSeconds(10)).build();
         int port = s.cse.getPort() > 0 ? s.cse.getPort() : "https".equals(s.cse.getScheme()) ? 443 : 80;
         return new StagedConnectionTest<AutoCloseable>(s.cse.getHost(), port, false, null, true, options.testTimeout(), "POLL")
                 .run(remaining -> {
@@ -156,7 +156,7 @@ public class OneM2mConnector implements SourceConnector {
 
         @Override
         protected void connect() throws Exception {
-            http = HttpClient.newBuilder().connectTimeout(options.connectTimeout()).build();
+            http = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).connectTimeout(options.connectTimeout()).build();
             get(http, settings, config, settings.cse.toString());
         }
 
